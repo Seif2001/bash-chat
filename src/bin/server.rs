@@ -16,16 +16,16 @@ async fn main() {
 
     loop {
         // Spawn a task to handle receiving and processing
-        let socket = socket.clone();
-        let db = db.clone();
-
+        
         // Spawn an asynchronous task for each received message
+        let db = db.clone();
+        let socket = socket.clone();
+        let mut buf = vec![0u8; 1024];
+        let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
+        let data = buf[..len].to_vec();
         tokio::spawn(async move {
-            let mut buf = vec![0u8; 1024];
 
             // Asynchronously receive data from the socket
-            let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
-            let data = buf[..len].to_vec();
 
             // Process the received data
             process(socket, db, data, addr).await;
