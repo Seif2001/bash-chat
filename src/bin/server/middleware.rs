@@ -1,39 +1,13 @@
 use tokio::net::UdpSocket;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::net::{Ipv4Addr};
+
+
 
 type Db = Arc<Mutex<HashMap<String, String>>>;
 
-#[tokio::main]
-async fn main() {
-    // Bind a UDP socket to port 6379
-    let socket = Arc::new(UdpSocket::bind("127.0.0.1:6379").await.unwrap());
-    
-    println!("Listening for UDP packets on 127.0.0.1:6379");
-
-    // Shared database
-    let db = Arc::new(Mutex::new(HashMap::new()));
-
-    loop {
-        // Spawn a task to handle receiving and processing
-        
-        // Spawn an asynchronous task for each received message
-        let db = db.clone();
-        let socket = socket.clone();
-        let mut buf = vec![0u8; 1024];
-        let (len, addr) = socket.recv_from(&mut buf).await.unwrap();
-        let data = buf[..len].to_vec();
-        tokio::spawn(async move {
-
-            // Asynchronously receive data from the socket
-
-            // Process the received data
-            process(socket, db, data, addr).await;
-        });
-    }
-}
-
-async fn process(socket: Arc<UdpSocket>, db: Db, data: Vec<u8>, addr: std::net::SocketAddr) {
+pub async fn process(socket: Arc<UdpSocket>, db: Db, data: Vec<u8>, addr: std::net::SocketAddr) {
     let request = String::from_utf8(data).unwrap();
 
     // Split the request into command and key/value
@@ -67,4 +41,13 @@ async fn process(socket: Arc<UdpSocket>, db: Db, data: Vec<u8>, addr: std::net::
 
     // Send the response back to the client
     socket.send_to(response.as_bytes(), &addr).await.unwrap();
+}
+
+
+pub async fn join(socket: Arc<UdpSocket>, interface_addr:Ipv4Addr, multicast_addr:Ipv4Addr ) -> std::io::Result<()> {
+
+    socket.join_multicast_v4(multicast_addr,interface_addr)?;
+
+    println!("Joined multicast group on interface: {}", interface_addr);
+    Ok(())
 }
