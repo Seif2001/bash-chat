@@ -1,20 +1,34 @@
-use steganography::util::*;
-pub mod image_processor;
-use std::io::Write;
+pub mod election;
+use tokio::task;
+use tokio::{net::UdpSocket as TokioUdpSocket};
+use std::sync::Arc;
 
-fn main() {
+// #[tokio::main]
 
-    // // Load the default image (used as the key)
-    // let default_image = file_as_dynamic_image("default.png".to_string());
+// async fn main() {
+//     let port: u16 = 6375;
+//     let curr_id: u32 = 1;
+//     let other_hosts = vec!["127.0.0.1:6376".to_string(), "127.0.0.1:6377".to_string()];
 
-    // Paths for input and output images
-    let input_image_path = "test.png".to_string();
-    let encoded_image_path = "test_enc.png".to_string();
-    let encoded_image_path_new = "test_enc_new.png".to_string();
+//     election::bully_listener(port, curr_id, other_hosts).await;
+// }
 
-    // Encode the image using the payload and the key image
-    image_processor::encode_image(input_image_path.clone(), encoded_image_path.clone(), "default1.png".to_string());
+// #[tokio::main]
+// async fn main() {
+//     let port: u16 = 6376;
+//     let curr_id: u32 = 2;
+//     let other_hosts = vec!["127.0.0.1:6375".to_string(), "127.0.0.1:6377".to_string()];
 
-    // Decode the image using the encoded image and the key image
-    image_processor::decode_image(encoded_image_path.clone(), encoded_image_path_new.clone());
+//     election::bully_listener(port, curr_id, other_hosts).await;
+// }
+
+#[tokio::main]
+async fn main() {
+    let port: u16 = 6377;
+    let curr_id: u32 = 3;
+    let other_hosts = vec!["127.0.0.1:6375".to_string(), "127.0.0.1:6376".to_string()];
+    let listener_addr = format!("0.0.0.0:{}", port);
+    let socket = Arc::new(TokioUdpSocket::bind(&listener_addr).await.unwrap());
+    let _ = election::bully_algorithm(port, curr_id, other_hosts,socket.clone()).await;
 }
+
