@@ -58,7 +58,7 @@ pub async fn send_rpc(
     port: u16
 ) ->std::io::Result<()>{
     let multicast_socket = (multicast_addr, port);
-    let message = "Hello, multicast world!";
+    let message = "Hello, seif!";
     // Send the message
     socket.send_to(message.as_bytes(), multicast_socket).await?;
 

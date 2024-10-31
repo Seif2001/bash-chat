@@ -4,7 +4,7 @@ use std::io::{self, Write};
 fn main() -> io::Result<()> {
     // Create a UDP socket
     let socket = UdpSocket::bind("0.0.0.0:0")?; // Bind to any available local address
-    let server_addr = "172.20.10.8:6379"; // Server address
+    let server_addr = "172.20.10.2:6379"; // Server address
 
     println!("UDP client is running. Type 'SET <key> <value>' or 'GET <key>' to interact.");
 

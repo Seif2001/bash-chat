@@ -5,6 +5,7 @@ use std::net::Ipv4Addr;
 use dotenv::dotenv;
 use std::env;
 use std::str::FromStr;
+use tokio::time::{self, Duration};
 
 mod middleware;
 
@@ -53,6 +54,17 @@ async fn main() {
         async move {
             loop {
                 middleware::send_rpc(socket_server.clone(), multicast_addr, port_server).await.expect("Failed to send RPC");
+                time::sleep(Duration::from_secs(1)).await;
+            }
+        }
+    });
+
+    tokio::spawn({
+        let socket_server = socket_server.clone();
+
+
+        async move {
+            loop {
                 middleware::recv_rpc(socket_server.clone()).await.expect("Failed to receive RPC");
             }
         }
