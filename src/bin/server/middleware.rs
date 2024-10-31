@@ -64,15 +64,15 @@ pub async fn send_rpc(
 
     println!("Message sent to multicast group at {}:{}", multicast_addr, port);
     Ok(())
+   
 }
 
 pub async fn recv_rpc(socket: Arc<UdpSocket>) -> std::io::Result<()> {
-    loop {
-        let mut buf = vec![0u8; 1024];
-        let (len, addr) = socket.recv_from(&mut buf).await?;
-        let data = buf[..len].to_vec();
-        let message = String::from_utf8(data).unwrap();
+    let mut buf = vec![0u8; 1024];
+    let (len, addr) = socket.recv_from(&mut buf).await?;
+    let data = buf[..len].to_vec();
+    let message = String::from_utf8(data).unwrap();
 
-        println!("Received message from {}: {}", addr, message);
-    }
+    println!("Received message from {}: {}", addr, message);
+    Ok(())
 }
