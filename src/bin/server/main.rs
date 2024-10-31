@@ -15,6 +15,7 @@ async fn main() -> std::io::Result<()> {
     server.clone().join().await.expect("Failed to join multicast group");
 
     // Set up tasks for sending, receiving, and processing client messages
+    server.clone().send_info().await.expect("Failed to setup RPC receiving");
     server.clone().recv_rpc().await.expect("Failed to setup RPC receiving");
     //server.process_client().await.expect("Failed to setup client processing");
 

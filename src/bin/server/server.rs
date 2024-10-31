@@ -63,73 +63,73 @@ impl Server {
         middleware::join(self.socket_server.clone(), self.interface_addr, self.multicast_addr)
             .await
             .expect("Failed to join multicast group");
-
+        self.send_info();
         Ok(())
     }
 
-    pub async fn election(self: Arc<Self>) -> std::io::Result<()>{
-        let self_clone = self.clone();
-        self.send_info().await?;
-        self_clone.send_leader().await?;
-        Ok(())
-    }
+    // pub async fn election(self: Arc<Self>) -> std::io::Result<()>{
+    //     let self_clone = self.clone();
+    //     self.send_info().await?;
+    //     self_clone.send_leader().await?;
+    //     Ok(())
+    // }
 
-    pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
-        loop {
-            // Spawn a new task for receiving messages
-            let socket_server = self.socket_server.clone();
-            let db = self.db.clone(); // Clone the Arc<Mutex<HashMap<u32, u32>>>
+    // pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
+    //     loop {
+    //         // Spawn a new task for receiving messages
+    //         let socket_server = self.socket_server.clone();
+    //         let db = self.db.clone(); // Clone the Arc<Mutex<HashMap<u32, u32>>>
     
-            tokio::spawn(async move {
-                let result = middleware::recv_rpc(socket_server.clone()).await;
+    //         tokio::spawn(async move {
+    //             let result = middleware::recv_rpc(socket_server.clone()).await;
     
-                match result {
-                    Ok(message) => {
-                        // Split the message into id and value
-                        let parts: Vec<&str> = message.split(':').collect();
-                        if parts.len() == 2 {
-                            if let (Ok(id), Ok(value)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
-                                // Lock the database and update the value
-                                let mut db = db.lock().unwrap();
-                                db.insert(id, value);
-                                println!("Updated db with id: {} and value: {}", id, value);
-                            } else {
-                                eprintln!("Failed to parse id or value from message: {}", message);
-                            }
-                        }
-                    },
-                    Err(e) => eprintln!("Failed to receive RPC: {}", e),
-                }
-            });
-        }
+    //             match result {
+    //                 Ok(message) => {
+    //                     // Split the message into id and value
+    //                     let parts: Vec<&str> = message.split(':').collect();
+    //                     if parts.len() == 2 {
+    //                         if let (Ok(id), Ok(value)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
+    //                             // Lock the database and update the value
+    //                             let mut db = db.lock().unwrap();
+    //                             db.insert(id, value);
+    //                             println!("Updated db with id: {} and value: {}", id, value);
+    //                         } else {
+    //                             eprintln!("Failed to parse id or value from message: {}", message);
+    //                         }
+    //                     }
+    //                 },
+    //                 Err(e) => eprintln!("Failed to receive RPC: {}", e),
+    //             }
+    //         });
+    //     }
     
-        Ok(())
-    }
+    //     Ok(())
+    // }
     
 
-    pub fn choose_leader(mut self:Arc<Self>) -> std::io::Result<()> {
-        // Initialize variables to store the minimum value and the corresponding key
-        let mut min_key: Option<u32> = None;
-        let mut min_value: Option<u32> = None;
+    // pub fn choose_leader(mut self:Arc<Self>) -> std::io::Result<()> {
+    //     // Initialize variables to store the minimum value and the corresponding key
+    //     let mut min_key: Option<u32> = None;
+    //     let mut min_value: Option<u32> = None;
     
-        // Iterate through the entries in the HashMap
-        let min_key = {
-            let db = self.db.lock().unwrap();
-            for (&key, &value) in db.iter() {
-                // Check if we haven't set a minimum value yet or if the current value is lower than the minimum found
-                if min_value.is_none() || value < min_value.unwrap() {
-                    min_value = Some(value); // Update the minimum value
-                    min_key = Some(key);     // Update the corresponding key
-                }
-            }
-            min_key
-        };
+    //     // Iterate through the entries in the HashMap
+    //     let min_key = {
+    //         let db = self.db.lock().unwrap();
+    //         for (&key, &value) in db.iter() {
+    //             // Check if we haven't set a minimum value yet or if the current value is lower than the minimum found
+    //             if min_value.is_none() || value < min_value.unwrap() {
+    //                 min_value = Some(value); // Update the minimum value
+    //                 min_key = Some(key);     // Update the corresponding key
+    //             }
+    //         }
+    //         min_key
+    //     };
     
-        // Return the key with the lowest value, or None if the map is empty
-        let mut server = Arc::get_mut(&mut self).expect("Failed to get mutable reference to server");
-        server.leader = min_key.unwrap();
-        Ok(())
-    }
+    //     // Return the key with the lowest value, or None if the map is empty
+    //     let mut server = Arc::get_mut(&mut self).expect("Failed to get mutable reference to server");
+    //     server.leader = min_key.unwrap();
+    //     Ok(())
+    // }
 
     pub async fn send_info(self:Arc<Self>) -> std::io::Result<()> {
         let socket_server = self.socket_server.clone();
@@ -213,14 +213,22 @@ impl Server {
     }
 
     pub async fn recv_rpc(&self) -> std::io::Result<()> {
-        loop{tokio::spawn({
+        loop{
+            let mut buf = vec![0u8; 1024];
             let socket_server = self.socket_server.clone();
+            let (len, addr) = socket_server.recv_from(&mut buf).await?;
+            let data = buf[..len].to_vec();
+            let message = String::from_utf8(data).unwrap();
 
-            async move {
+
+        //     tokio::spawn({
+
+        //         async move {
                 
-                    middleware::recv_rpc(socket_server.clone()).await.expect("Failed to receive RPC");
-            }   
-        });}
+                   
+        //         }   
+        // });}
+        }
         
         Ok(())
     }

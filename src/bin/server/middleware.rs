@@ -67,12 +67,9 @@ pub async fn send_rpc(
    
 }
 
-pub async fn recv_rpc(socket: Arc<UdpSocket>) -> std::io::Result<String> {
-    let mut buf = vec![0u8; 1024];
-    let (len, addr) = socket.recv_from(&mut buf).await?;
-    let data = buf[..len].to_vec();
-    let message = String::from_utf8(data).unwrap();
+pub async fn recv_rpc(socket: Arc<UdpSocket>) -> std::io::Result<()> {
+    
 
-    println!("Received message from {}: {}", addr, message);
-    Ok(message)
+    //println!("Received message from {}: {}", addr, message);
+    Ok(())
 }
