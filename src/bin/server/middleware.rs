@@ -51,3 +51,28 @@ pub async fn join(socket: Arc<UdpSocket>, interface_addr:Ipv4Addr, multicast_add
     println!("Joined multicast group on interface: {}", interface_addr);
     Ok(())
 }
+
+pub async fn send_rpc(
+    socket: Arc<UdpSocket>,
+    multicast_addr: Ipv4Addr,
+    port: u16
+) ->std::io::Result<()>{
+    let multicast_socket = (multicast_addr, port);
+    let message = "Hello, multicast world!";
+    // Send the message
+    socket.send_to(message.as_bytes(), multicast_socket).await?;
+
+    println!("Message sent to multicast group at {}:{}", multicast_addr, port);
+    Ok(())
+}
+
+pub async fn recv_rpc(socket: Arc<UdpSocket>) -> std::io::Result<()> {
+    loop {
+        let mut buf = vec![0u8; 1024];
+        let (len, addr) = socket.recv_from(&mut buf).await?;
+        let data = buf[..len].to_vec();
+        let message = String::from_utf8(data).unwrap();
+
+        println!("Received message from {}: {}", addr, message);
+    }
+}
