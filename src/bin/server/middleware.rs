@@ -55,10 +55,10 @@ pub async fn join(socket: Arc<UdpSocket>, interface_addr:Ipv4Addr, multicast_add
 pub async fn send_rpc(
     socket: Arc<UdpSocket>,
     multicast_addr: Ipv4Addr,
-    port: u16
+    port: u16,
+    message: String,
 ) ->std::io::Result<()>{
     let multicast_socket = (multicast_addr, port);
-    let message = "Hello, seif!";
     // Send the message
     socket.send_to(message.as_bytes(), multicast_socket).await?;
 
