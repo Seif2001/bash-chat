@@ -153,13 +153,11 @@ impl Server {
     //     }
     // }
     pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
-        
         loop {
             let mut buf = vec![0u8; 1024];
-            let socket_server = self.clone().socket_server.clone();
+            let socket_server = self.socket_server.clone();
             let db = self.db.clone(); // Clone Arc<Mutex<HashMap<u32, u32>>> for async move
-            let leader_lock: Arc<RwLock<u32>> = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
-            let self_clone = self.clone();
+            let leader_lock = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
             
             // Try to receive messages
             match socket_server.recv_from(&mut buf).await {
@@ -169,39 +167,44 @@ impl Server {
                     println!("Received '{}' from {}", message, addr);
                     
                     // Spawn an async task to handle each message
-                    tokio::spawn(async move {
-                        // Check if the message is in the correct format "Lead: id"
-                        if let Some(id_str) = message.strip_prefix("Lead:") {
-                            // Parse the id from the message
-                            if let Ok(id) = id_str.trim().parse::<u32>() {
-                                let mut leader = leader_lock.write().expect("Failed to write leader");
-                                *leader = id;
-                                println!("Updated leader to '{}' from {}", id, addr);
-                            } else {
-                                eprintln!("Failed to parse leader id from message: {}", message);
-                            }
-                        } else if let Some((key, value)) = message.split_once(':') {
-                            // Handle the key:value format
-                            let key = key.trim().to_string();
-                            if let Ok(value) = value.trim().parse::<u32>() { // Assuming value should be u32
-                                match key.parse::<u32>() {
-                                    Ok(parsed_key) => {
+                    tokio::spawn({
+                        let db = db.clone();
+                        let leader_lock = leader_lock.clone();
+                        let self_clone = self.clone();
+    
+                        async move {
+                            // Check if the message is in the correct format "Lead: id"
+                            if let Some(id_str) = message.strip_prefix("Lead:") {
+                                // Parse the id from the message
+                                if let Ok(id) = id_str.trim().parse::<u32>() {
+                                    let mut leader = leader_lock.write().expect("Failed to write leader");
+                                    *leader = id;
+                                    println!("Updated leader to '{}' from {}", id, addr);
+                                } else {
+                                    eprintln!("Failed to parse leader id from message: {}", message);
+                                }
+                            } else if let Some((key, value)) = message.split_once(':') {
+                                // Handle the key:value format
+                                let key = key.trim();
+                                if let Ok(parsed_key) = key.parse::<u32>() {
+                                    if let Ok(value) = value.trim().parse::<u32>() {
                                         let mut db_lock = db.lock().unwrap();
                                         db_lock.insert(parsed_key, value);
+    
+                                        if let Ok(Some(new_leader)) = self_clone.choose_leader() {
+                                            let mut leader = leader_lock.write().expect("Failed to write leader");
+                                            *leader = new_leader;
+                                            println!("Updated database with {}:{} new leader: {}", parsed_key, value, new_leader);
+                                        }
+                                    } else {
+                                        eprintln!("Failed to parse value from message: {}", message);
                                     }
-                                    Err(e) => {
-                                        eprintln!("Failed to parse key from message: {}", e);
-                                    }
+                                } else {
+                                    eprintln!("Failed to parse key from message: {}", message);
                                 }
-                                let new_leader = self_clone.choose_leader().expect("Failed to choose leader");
-                                let mut leader = leader_lock.write().expect("Failed to write leader");
-                                *leader = new_leader.unwrap();
-                                println!("Updated database with {}:{} new leader: {} ", key, value, new_leader.unwrap());
                             } else {
-                                eprintln!("Failed to parse value from message: {}", message);
+                                println!("Received invalid message format from {}", addr);
                             }
-                        } else {
-                            println!("Received invalid message format from {}", addr);
                         }
                     });
                 }
@@ -211,6 +214,8 @@ impl Server {
             }
         }
     }
+    
+    
     
     
 
