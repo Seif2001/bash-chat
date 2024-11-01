@@ -1,34 +1,28 @@
-pub mod election;
-use tokio::task;
-use tokio::{net::UdpSocket as TokioUdpSocket};
-use std::sync::Arc;
+mod server; // Include the server module
+mod middleware;
+use std::sync::{Arc, Mutex};
 
-// #[tokio::main]
-
-// async fn main() {
-//     let port: u16 = 6375;
-//     let curr_id: u32 = 1;
-//     let other_hosts = vec!["127.0.0.1:6376".to_string(), "127.0.0.1:6377".to_string()];
-
-//     election::bully_listener(port, curr_id, other_hosts).await;
-// }
-
-// #[tokio::main]
-// async fn main() {
-//     let port: u16 = 6376;
-//     let curr_id: u32 = 2;
-//     let other_hosts = vec!["127.0.0.1:6375".to_string(), "127.0.0.1:6377".to_string()];
-
-//     election::bully_listener(port, curr_id, other_hosts).await;
-// }
 
 #[tokio::main]
-async fn main() {
-    let port: u16 = 6377;
-    let curr_id: u32 = 3;
-    let other_hosts = vec!["127.0.0.1:6375".to_string(), "127.0.0.1:6376".to_string()];
-    let listener_addr = format!("0.0.0.0:{}", port);
-    let socket = Arc::new(TokioUdpSocket::bind(&listener_addr).await.unwrap());
-    let _ = election::bully_algorithm(port, curr_id, other_hosts,socket.clone()).await;
-}
+async fn main() -> std::io::Result<()> {
+    dotenv::dotenv().ok();
 
+    // Initialize the Server
+    let server = server::Server::new(1, false, 1).await;
+
+    // Join multicast group
+    let server = Arc::new(server);
+    server.clone().join().await.expect("Failed to join multicast group");
+
+    // Set up tasks for sending, receiving, and processing client messages
+    let recv_task = {
+        let server = server.clone();
+        tokio::spawn(async move {
+            server.recv_rpc().await;
+        })
+    };    //server.process_client().await.expect("Failed to setup client processing");
+    let _ = tokio::join!(recv_task);
+    server.clone().send_info().await.expect("Failed to setup RPC receiving");
+
+    Ok(())
+}
