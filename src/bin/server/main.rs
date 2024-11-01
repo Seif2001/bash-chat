@@ -15,9 +15,14 @@ async fn main() -> std::io::Result<()> {
     server.clone().join().await.expect("Failed to join multicast group");
 
     // Set up tasks for sending, receiving, and processing client messages
+    let recv_task = {
+        let server = server.clone();
+        tokio::spawn(async move {
+            server.recv_rpc().await;
+        })
+    };    //server.process_client().await.expect("Failed to setup client processing");
+    let _ = tokio::join!(recv_task);
     server.clone().send_info().await.expect("Failed to setup RPC receiving");
-    server.clone().recv_rpc().await.expect("Failed to setup RPC receiving");
-    //server.process_client().await.expect("Failed to setup client processing");
 
     Ok(())
 }

@@ -212,25 +212,20 @@ impl Server {
         Ok(())
     }
 
-    pub async fn recv_rpc(&self) -> std::io::Result<()> {
+    pub async fn recv_rpc(&self) {
         loop{
             let mut buf = vec![0u8; 1024];
             let socket_server = self.socket_server.clone();
-            let (len, addr) = socket_server.recv_from(&mut buf).await?;
+            let (len, addr) = socket_server.recv_from(&mut buf).await.expect("Failed");
             let data = buf[..len].to_vec();
             let message = String::from_utf8(data).unwrap();
 
+            tokio::spawn(async move{
 
-        //     tokio::spawn({
-
-        //         async move {
-                
-                   
-        //         }   
-        // });}
+                println!("Recieved message : {} from {}", message, addr);
+            });
         }
         
-        Ok(())
     }
 
     // pub async fn process_client(&self) -> std::io::Result<()> {
