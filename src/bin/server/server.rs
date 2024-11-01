@@ -82,7 +82,7 @@ impl Server {
     
         // Spawn a new async task for sending leader messages
         tokio::spawn(async move {
-            let message = format!("Lead: {}", id.clone());
+            let message = format!("Lead:{}", id.clone());
             
             // Continue sending messages while not the leader
             while *self.leader.read().expect("Failed to read leader") == id {
@@ -110,11 +110,12 @@ impl Server {
             let (len, addr) = socket_server.recv_from(&mut buf).await.expect("Failed to receive message");
             let data = buf[..len].to_vec();
             let message = String::from_utf8(data).unwrap();
+            println!("recieverd {} from {}", message, addr);
 
             // Spawn an async task to handle each message
             tokio::spawn(async move {
                 // Check if the message is in the correct format "Lead : id"
-                if let Some(id_str) = message.strip_prefix("Lead : ") {
+                if let Some(id_str) = message.strip_prefix("Lead:") {
                     // Parse the id from the message
                     if let Ok(id) = id_str.trim().parse::<u32>() {
                         let mut leader = leader_lock.write().expect("Failed to write leader");
