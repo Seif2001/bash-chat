@@ -6,7 +6,7 @@ use std::env;
 use std::str::FromStr;
 use tokio::time::{self, Duration};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RWLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use sysinfo::{System};
 use crate::middleware;
@@ -14,7 +14,7 @@ use crate::middleware;
 pub struct Server {
     id: u32,
     failed: bool,
-    leader: Arc<RWLock<u32>>,
+    leader: Arc<RwLock<u32>>,
     socket_client: Arc<UdpSocket>, // for client to server communication
     socket_server: Arc<UdpSocket>, // for server to server communication
     multicast_addr: Ipv4Addr,
@@ -24,7 +24,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn new(id: u32, failed: bool, leader: u32) -> Server {
+    pub async fn new(id: u32, failed: bool, leader: Arc<RwLock<u32>>) -> Server {
         dotenv().ok();
         
         let port_server = env::var("PORT_SERVER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
@@ -67,13 +67,68 @@ impl Server {
         Ok(())
     }
 
-    pub async fn election(self: Arc<Self>) -> std::io::Result<()>{
+    pub async fn election(self: Arc<Self>)-> std::io::Result<()> {
         let self_clone = self.clone();
-        self.send_leader().await?;
-        self_clone.recv_leader().await?;
+        self.send_leader().await;
+        self_clone.recv_leader().await;
         Ok(())
     }
 
+    pub async fn send_leader(self:Arc<Self>) -> std::io::Result<()> {
+        let socket_server = self.socket_server.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_server = self.port_server;
+        let id = self.id;
+    
+        // Spawn a new async task for sending leader messages
+        tokio::spawn(async move {
+            let message = format!("Lead: {}", id.clone());
+            
+            // Continue sending messages while not the leader
+            while *self.leader.read().expect("Failed to read leader") == id {
+                println!("Sending message: {}", message);
+                match middleware::send_message(socket_server.clone(), multicast_addr, port_server, message.clone()).await {
+                    Ok(_) => println!("Message sent successfully"),
+                    Err(e) => eprintln!("Failed to send RPC: {}", e),
+                }
+    
+                // Sleep for 1 second before sending the next message
+                time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+    
+        Ok(())
+    }
+    
+
+    pub async fn recv_leader(self: Arc<Self>) {
+        loop {
+            let mut buf = vec![0u8; 1024];
+            let socket_server = self.socket_server.clone();
+            let leader_lock = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
+
+            let (len, addr) = socket_server.recv_from(&mut buf).await.expect("Failed to receive message");
+            let data = buf[..len].to_vec();
+            let message = String::from_utf8(data).unwrap();
+
+            // Spawn an async task to handle each message
+            tokio::spawn(async move {
+                // Check if the message is in the correct format "Lead : id"
+                if let Some(id_str) = message.strip_prefix("Lead : ") {
+                    // Parse the id from the message
+                    if let Ok(id) = id_str.trim().parse::<u32>() {
+                        let mut leader = leader_lock.write().expect("Failed to write leader");
+                        *leader = id;
+                        println!("Updated leader to '{}' from {}", id, addr);
+                    } else {
+                        eprintln!("Failed to parse leader id from message: {}", message);
+                    }
+                } else {
+                    println!("Received invalid message format from {}", addr);
+                }
+            });
+        }
+    }
     // pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
     //     loop {
     //         // Spawn a new task for receiving messages
@@ -156,7 +211,7 @@ impl Server {
                 let message = format!("{}:{}", id, cpu * mem);
                 
                 println!("Sending message: {}", message);
-                middleware::send_rpc(socket_server.clone(), multicast_addr, port_server, message)
+                middleware::send_message(socket_server.clone(), multicast_addr, port_server, message)
                     .await
                     .expect("Failed to send RPC");
 
@@ -166,76 +221,21 @@ impl Server {
         Ok(())
     }
 
-    pub async fn send_leader(self:Arc<Self>) -> std::io::Result<()> {
-        let socket_server = self.socket_server.clone();
-        let multicast_addr = self.multicast_addr;
-        let port_server = self.port_server;
-        let id = self.id;
-    
-        // Spawn a new async task for sending leader messages
-        tokio::spawn(async move {
-            let message = format!("Lead: {}", id.clone());
-            
-            // Continue sending messages while not the leader
-            while self.leader == id {
-                println!("Sending message: {}", message);
-                match middleware::send_message(socket_server.clone(), multicast_addr, port_server, message.clone()).await {
-                    Ok(_) => println!("Message sent successfully"),
-                    Err(e) => eprintln!("Failed to send RPC: {}", e),
-                }
-    
-                // Sleep for 1 second before sending the next message
-                time::sleep(Duration::from_secs(1)).await;
-            }
-        });
-    
-        Ok(())
-    }
     
 
-    pub async fn recv_leader(self: Arc<Self>) {
-        loop {
-            let mut buf = vec![0u8; 1024];
-            let socket_server = self.socket_server.clone();
-            let leader_lock = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
-
-            let (len, addr) = socket_server.recv_from(&mut buf).await.expect("Failed to receive message");
-            let data = buf[..len].to_vec();
-            let message = String::from_utf8(data).unwrap();
-
-            // Spawn an async task to handle each message
-            tokio::spawn(async move {
-                // Check if the message is in the correct format "Lead : id"
-                if let Some(id_str) = message.strip_prefix("Lead : ") {
-                    // Parse the id from the message
-                    if let Ok(id) = id_str.trim().parse::<u32>() {
-                        let mut leader = leader_lock.write().await;
-                        *leader = id;
-                        println!("Updated leader to '{}' from {}", id, addr);
-                    } else {
-                        eprintln!("Failed to parse leader id from message: {}", message);
-                    }
-                } else {
-                    println!("Received invalid message format from {}", addr);
-                }
-            });
-        }
-    }
+    // pub async fn process_client(self:Arc<Self>) -> std::io::Result<()> {
+    //     loop {
+    //         let db = self.db.clone();
+    //         let socket_client = self.socket_client.clone();
+    //         let mut buf = vec![0u8; 1024];
+    //         let (len, addr) = self.socket_client.recv_from(&mut buf).await.expect("Failed to receive from client socket");
+    //         let data = buf[..len].to_vec();
     
+    //         tokio::spawn(async move {
+    //             middleware::process(socket_client, db, data, addr).await;
+    //         });
+    //     }
 
-    pub async fn process_client(Arc<Self>) -> std::io::Result<()> {
-        loop {
-            let db = self.db.clone();
-            let socket_client = self.socket_client.clone();
-            let mut buf = vec![0u8; 1024];
-            let (len, addr) = self.socket_client.recv_from(&mut buf).await.expect("Failed to receive from client socket");
-            let data = buf[..len].to_vec();
-    
-            tokio::spawn(async move {
-                middleware::process(socket_client, db, data, addr).await;
-            });
-        }
-
-        // Optionally add client processing logic here
-    }
+    //     // Optionally add client processing logic here
+    // }
 }
