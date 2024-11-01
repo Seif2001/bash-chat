@@ -9,7 +9,7 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
     // Initialize the Server
-    let server = server::Server::new(2, false, Arc::new(RwLock::new(2))).await;
+    let server = server::Server::new(1, false, Arc::new(RwLock::new(1))).await;
 
     // Join multicast group
     let server = Arc::new(server);
@@ -18,6 +18,11 @@ async fn main() -> std::io::Result<()> {
     // Set up tasks for sending, receiving, and processing client messages
     let server = server.clone();
     server.election().await.expect("Failed to elect leader"); 
+
+    //add loop to keep the server running
+    // loop {
+    //     sleep(Duration::from_secs(1)).await;
+    // }
       
 
 
