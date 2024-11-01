@@ -153,19 +153,21 @@ impl Server {
     //     }
     // }
     pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
+        
         loop {
             let mut buf = vec![0u8; 1024];
-            let socket_server = self.socket_server.clone();
+            let socket_server = self.clone().socket_server.clone();
             let db = self.db.clone(); // Clone Arc<Mutex<HashMap<u32, u32>>> for async move
             let leader_lock: Arc<RwLock<u32>> = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
-    
+            let self_clone = self.clone();
+            
             // Try to receive messages
             match socket_server.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
                     let data = buf[..len].to_vec();
                     let message = String::from_utf8_lossy(&data).to_string();
                     println!("Received '{}' from {}", message, addr);
-    
+                    
                     // Spawn an async task to handle each message
                     tokio::spawn(async move {
                         // Check if the message is in the correct format "Lead: id"
@@ -182,16 +184,19 @@ impl Server {
                             // Handle the key:value format
                             let key = key.trim().to_string();
                             if let Ok(value) = value.trim().parse::<u32>() { // Assuming value should be u32
-                                let mut db_lock = db.lock().expect("Failed to lock database");
                                 match key.parse::<u32>() {
                                     Ok(parsed_key) => {
+                                        let mut db_lock = db.lock().unwrap();
                                         db_lock.insert(parsed_key, value);
                                     }
                                     Err(e) => {
                                         eprintln!("Failed to parse key from message: {}", e);
                                     }
                                 }
-                                println!("Updated database with {}: {}", key, value);
+                                let new_leader = self_clone.choose_leader().expect("Failed to choose leader");
+                                let mut leader = leader_lock.write().expect("Failed to write leader");
+                                *leader = new_leader.unwrap();
+                                println!("Updated database with {}:{} new leader: {} ", key, value, new_leader.unwrap());
                             } else {
                                 eprintln!("Failed to parse value from message: {}", message);
                             }
@@ -209,7 +214,7 @@ impl Server {
     
     
 
-    pub fn choose_leader(mut self:Arc<Self>) -> std::io::Result<()> {
+    pub fn choose_leader(self:Arc<Self>) -> std::io::Result<Option<u32>> {
         // Initialize variables to store the minimum value and the corresponding key
         let mut min_key: Option<u32> = None;
         let mut min_value: Option<u32> = None;
@@ -230,10 +235,9 @@ impl Server {
         };
     
         // Return the key with the lowest value, or None if the map is empty
-        let server = Arc::get_mut(&mut self).expect("Failed to get mutable reference to server");
-        let mut leader = leader_lock.write().expect("Failed to write leader");
-        *leader = min_key.unwrap_or(server.id); // Set the leader to the server with the lowest value or the current server
-        Ok(())
+        
+        Ok(min_key) // Set the leader to the server with the lowest value or the current server
+    
     }
 
     pub async fn send_info(self:Arc<Self>) -> std::io::Result<()> {
