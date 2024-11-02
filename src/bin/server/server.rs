@@ -30,6 +30,7 @@ pub struct Server {
     port_server: u16,
     port_bully: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
+    pub is_running: Arc<tokioMutex<bool>>,
 }
 
 
@@ -80,6 +81,7 @@ impl Server {
             port_server,
             port_bully,
             db,
+            is_running: Arc::new(tokioMutex::new(false)),
         }
     }
 
@@ -387,7 +389,7 @@ impl Server {
         });
     
         
-        let mut random_number = rand::thread_rng().gen_range(0..100);
+        let random_number = rand::thread_rng().gen_range(0..100);
         println!("Host {} generated identifier: {:?}", self.id, random_number);
         self.clone().send_bully_info(random_number).await;
 
@@ -444,25 +446,157 @@ impl Server {
         }
     }
     
+
+    pub async fn bully_algorithm_init(self: Arc<Self>) {
+        let socket = self.socket_bully.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_bully = self.port_bully;
+
+        let start_time = time::Instant::now();
+        let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
+    
+        println!("Host {} listening on {}", self.id, port_bully);
+    
+        let (tx, mut rx): (broadcast::Sender<(u32, u32, bool)>, broadcast::Receiver<(u32, u32, bool)>) = broadcast::channel(10);  //this is a mpsc channel not a network broadcast channel
+        let listening_tx: broadcast::Sender<(u32, u32, bool)> = tx.clone();
+        let socket_listener = socket.clone();
+    
+     
+        task::spawn(async move {
+            let mut buf = [0u8; 1024];
+            loop {
+                match timeout(timeout_duration, socket_listener.recv_from(&mut buf)).await {
+                    Ok(Ok((size, addr))) => {
+                        if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
+                            println!("Received message from {}: (id: {}, random_number: {}, failed: {})", addr, id, random_number, failed);
+                            let _ = listening_tx.send((id, random_number, failed));
+                        }
+                    },
+                    Ok(Err(e)) => {
+                        eprintln!("Error receiving message: {:?}", e);
+                    },
+                    Err(_) => {
+                        println!("Timeout reached with no messages received within {:?}", timeout_duration);
+                        break; // Exit the loop if the timeout is reached
+                    }
+                }
+            }
+        });
+    
+        
+        let random_number = rand::thread_rng().gen_range(0..100);
+        println!("Host {} generated identifier: {:?}", self.id, random_number);
+        self.clone().send_bully_info(random_number).await;
+
+    
+
+        
+        let mut numbers: Vec<(u32, u32)> = vec![(self.id, random_number)];
+        let mut received_hosts = HashSet::new(); //for o(1) lookup on whether we have received a message from a host
+        
+        received_hosts.insert(self.id);
+
+    
+        
+    
+        // Main loop for receiving messages within the timeout
+        println!("here 1");
+        while start_time.elapsed() < timeout_duration {
+            match time::timeout(timeout_duration - start_time.elapsed(), rx.recv()).await {
+                Ok(Ok((id, random_number, failed))) => {
+                    if !received_hosts.contains(&id) {
+                        numbers.push((id, random_number));
+                        received_hosts.insert(id);
+                    }
+                }
+                _ => break, // Break on timeout or error
+            }
+        }    
+        println!("here 2");
+
+        //fix the code so it doesnt get stuck waiting
+
+        println!("Checking received hosts and numbers");
+        let mut max_host: Option<(u32, u32)> = None;
+
+        for (id, number) in &numbers {
+            match max_host {
+                Some((_, max_number)) => {
+                    if number > &max_number { 
+                        max_host = Some((*id, *number));
+                    }
+                }
+                None => {
+                    max_host = Some((*id, *number)); 
+                }
+            }
+        }
+
+        if let Some((max_id, _)) = max_host {
+            let mut failed = self.failed.write().unwrap();
+            *failed = max_id == self.id;
+            println!("Host {}: {}", self.id, if *failed { "failed" } else { "active" });
+        }
+    }
     
 
 
     pub async fn bully_listener(self: Arc<Self>) {
         let socket = self.socket_bully.clone();
-        let multicast_addr = self.multicast_addr;
-        let port_bully = self.port_bully;
-
         let mut buf = [0u8; 1024];
 
+        let mut interval = time::interval(Duration::from_secs(5)); // Interval for running the bully algorithm
+        let is_running = self.is_running.clone();
+
         loop {
-            let (size, _) = socket.recv_from(&mut buf).await.unwrap();
-            if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
-                if id != self.id as i32 {
-                println!("Starting sim fail due to received message: {:?}", (id, random_number, failed));
-                self.clone().bully_algorithm((id, random_number, failed)).await; 
+            tokio::select! {
+                _ = interval.tick() => {
+                    // Check if the bully algorithm is running
+                    let is_running_clone = is_running.clone();
+                    let mut running = is_running_clone.lock().await;
+                    if !*running {
+                        *running = true; // Set the flag to true to indicate it's running
+                        let id = self.id; // Assuming this is the local host ID
+                        // Start the bully algorithm in the background
+                        let self_clone = self.clone();
+                        let is_running_clone = is_running.clone();
+                        tokio::spawn(async move {
+                            self_clone.bully_algorithm_init().await;
+                            let mut running = is_running_clone.lock().await;
+                            *running = false;
+                        });
+                    }
                 }
-                else{
-                    println!("Received own message, skipping");
+                result = socket.recv_from(&mut buf) => {
+                    match result {
+                        Ok((size, _)) => {
+                            if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
+                                if id != self.id as i32 {
+                                    println!("Starting sim fail due to received message: {:?}", (id, random_number, failed));
+                                    // Start the bully algorithm if it's not already running
+                                    let is_running_clone = is_running.clone();
+                                    let mut running = is_running.lock().await;
+                                    if !*running {
+                                        *running = true; // Set the flag to true to indicate it's running
+                                        let self_clone = self.clone();
+                                        let is_running_clone = is_running.clone();
+                                        tokio::spawn(async move {
+                                            self_clone.bully_algorithm((id, random_number, failed)).await;
+                                            let mut running = is_running_clone.lock().await;
+                                            *running = false; // Reset the running flag once done
+                                        });
+                                    } else {
+                                        println!("Bully algorithm already running, skipping.");
+                                    }
+                                } else {
+                                    println!("Received own message, skipping.");
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("Error receiving message: {:?}", e);
+                        }
+                    }
                 }
             }
         }

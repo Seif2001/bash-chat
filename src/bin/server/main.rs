@@ -9,7 +9,7 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
     // Initialize the Server
-    let server = server::Server::new(1, false, Arc::new(RwLock::new(2))).await;
+    let server = server::Server::new(2, false, Arc::new(RwLock::new(2))).await;
 
     // Join multicast group
     let server = Arc::new(server);
@@ -29,12 +29,8 @@ async fn main() -> std::io::Result<()> {
     });
 
 
-
-
     //add loop to keep the server running
     loop {
-        // let server_clone = server.clone();
-        // server_clone.send_bully_info().await;
         sleep(Duration::from_secs(5)).await;
     
     }
