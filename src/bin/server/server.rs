@@ -518,24 +518,30 @@ impl Server {
 
         println!("Checking received hosts and numbers");
         let mut max_host: Option<(u32, u32)> = None;
-
-        for (id, number) in &numbers {
-            match max_host {
-                Some((_, max_number)) => {
-                    if number > &max_number { 
+        if numbers.len() == 1 {
+            let (id, number) = *numbers.iter().next().unwrap(); // Get the only host
+            let mut failed = self.failed.write().unwrap();
+            *failed = false; // Set to active
+            println!("Only one host detected: Host {} is active with number {}", id, number);
+        } else {
+            for (id, number) in &numbers {
+                match max_host {
+                    Some((_, max_number)) => {
+                        if number > &max_number {
+                            max_host = Some((*id, *number));
+                        }
+                    }
+                    None => {
                         max_host = Some((*id, *number));
                     }
                 }
-                None => {
-                    max_host = Some((*id, *number)); 
-                }
             }
-        }
-
-        if let Some((max_id, _)) = max_host {
-            let mut failed = self.failed.write().unwrap();
-            *failed = max_id == self.id;
-            println!("Host {}: {}", self.id, if *failed { "failed" } else { "active" });
+        
+            if let Some((max_id, _)) = max_host {
+                let mut failed = self.failed.write().unwrap();
+                *failed = max_id == self.id;
+                println!("Host {}: {}", self.id, if *failed { "failed" } else { "active" });
+            }
         }
     }
     
