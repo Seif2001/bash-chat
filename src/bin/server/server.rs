@@ -13,6 +13,8 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashSet;
 use tokio::sync::broadcast;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
+
 
 use sysinfo::{System};
 use crate::middleware;
@@ -22,11 +24,13 @@ pub struct Server {
     failed: Arc<RwLock<bool>>,
     leader: Arc<RwLock<u32>>,
     socket_client: Arc<UdpSocket>, // for client to server communication
-    socket_server: Arc<UdpSocket>, // for server to server communication
+    socket_leader: Arc<UdpSocket>, // for server to server communication
+    socket_election: Arc<UdpSocket>, // for server to server communication
     socket_bully: Arc<UdpSocket>, // for bully algorithm
     multicast_addr: Ipv4Addr,
     interface_addr: Ipv4Addr,
-    port_server: u16,
+    port_leader: u16,
+    port_election: u16,
     port_bully: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
     random_number: Arc<Mutex<u32>>,
@@ -42,20 +46,23 @@ impl Server {
     pub async fn new(id: u32, failed: bool, leader: Arc<RwLock<u32>>) -> Server {
         dotenv().ok();
         
-        let port_server = env::var("PORT_SERVER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
+        let port_leader = env::var("PORT_LEADER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
+        let port_election = env::var("PORT_ELECTION").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
         let port_client = env::var("PORT_CLIENT").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
         let port_bully = env::var("PORT_BULLY").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
 
 
         // Define server addresses
         let server_ip = "0.0.0.0:";
-        let server_address_server = format!("{}{}", server_ip, port_server);
+        let server_address_election = format!("{}{}", server_ip, port_election);
+        let server_address_leader = format!("{}{}", server_ip, port_leader);
         let server_address_client = format!("{}{}", server_ip, port_client);
         
         let server_address_bully = format!("{}{}", server_ip, port_bully);
 
         // Bind server and client sockets asynchronously
-        let socket_server = Arc::new(UdpSocket::bind(server_address_server).await.expect("Failed to bind server socket"));
+        let socket_election = Arc::new(UdpSocket::bind(server_address_election).await.expect("Failed to bind server socket"));
+        let socket_leader = Arc::new(UdpSocket::bind(server_address_leader).await.expect("Failed to bind server socket"));
         let socket_client = Arc::new(UdpSocket::bind(server_address_client).await.expect("Failed to bind client socket"));
 
         let socket_bully = Arc::new(UdpSocket::bind(server_address_bully).await.expect("Failed to bind bully socket"));
@@ -73,11 +80,13 @@ impl Server {
             failed: Arc::new(RwLock::new(failed)),
             leader,
             socket_client,
-            socket_server,
+            socket_leader,
+            socket_election,
             socket_bully,
             multicast_addr,
             interface_addr,
-            port_server,
+            port_leader,
+            port_election,
             port_bully,
             db,
             random_number: Arc::new(Mutex::new(0)),
@@ -85,51 +94,71 @@ impl Server {
     }
 
     pub async fn join(self:Arc<Self>) -> std::io::Result<()> {        
-        middleware::join(self.socket_server.clone(), self.interface_addr, self.multicast_addr)
+        middleware::join(self.socket_election.clone(), self.interface_addr, self.multicast_addr)
             .await
             .expect("Failed to join multicast group");
+
+        middleware::join(self.socket_leader.clone(), self.interface_addr, self.multicast_addr)
+        .await
+        .expect("Failed to join multicast group");
         Ok(())
     }
 
+    
     pub async fn election(self: Arc<Self>) -> std::io::Result<()> {
-        // Start sending leader messages
-        
-        let send_leader_future = self.clone().send_leader();
-        
-        let send_info_future = self.clone().send_info();
-        // Start receiving leader messages
-        let recv_info_future = self.clone().recv_info();
-    
-        // Start sending system information
-    
-        // Use tokio::select! to run the futures concurrently
-        // Use tokio::join! to run the futures concurrently
-        let (send_leader_result, recv_info_future, send_info_result) = tokio::join!(
-            send_leader_future,
-            recv_info_future,
-            send_info_future,
+        // Spawn each task to run concurrently
+        let send_leader_handle = task::spawn(self.clone().send_leader(None));
+        let send_info_handle = task::spawn(self.clone().send_info());
+        let recv_election_handle = task::spawn(self.clone().recv_election());
+        let recv_leader_handle = task::spawn(self.clone().recv_leader());
+
+        // Wait for all tasks to finish concurrently
+        let results = tokio::join!(
+            send_leader_handle,
+            send_info_handle,
+            recv_election_handle,
+            recv_leader_handle
         );
-    
+
+        // Check for errors in any of the tasks
+        if let Err(e) = results.0 {
+            eprintln!("Error in send_leader: {:?}", e);
+        }
+        if let Err(e) = results.1 {
+            eprintln!("Error in send_info: {:?}", e);
+        }
+        if let Err(e) = results.2 {
+            eprintln!("Error in recv_election: {:?}", e);
+        }
+        if let Err(e) = results.3 {
+            eprintln!("Error in recv_leader: {:?}", e);
+        }
+
         Ok(())
     }
-    
 
-    pub async fn send_leader(self:Arc<Self>) -> std::io::Result<()> {
-        let socket_server = self.socket_server.clone();
+    pub async fn send_leader(self:Arc<Self>, leader:Option<u32>) -> std::io::Result<()> {
+        let socket_leader = self.socket_leader.clone();
         let multicast_addr = self.multicast_addr;
-        let port_server = self.port_server;
-        let id = self.id;
+        let port_server = self.port_leader;
+        let mut id;
+        if let Some(c) = leader{
+            id = c;
+        }
+        else{
+            id = self.id;
+        }
     
         // Spawn a new async task for sending leader messages
         tokio::spawn(async move {
-            let message = format!("Lead:{}", id.clone());
+            let message = format!("Lead {}", id.clone());
             
             // Continue sending messages while not the leader
             let leader = *self.leader.read().expect("Failed to read leader");
             println!("I think the leader is {}", leader);
             while leader == id {
                 println!("Sending message: {}", message);
-                match middleware::send_message(socket_server.clone(), multicast_addr, port_server, message.clone()).await {
+                match middleware::send_message(socket_leader.clone(), multicast_addr, port_server, message.clone()).await {
                     Ok(_) => println!("Message sent successfully"),
                     Err(e) => eprintln!("Failed to send RPC: {}", e),
                 }
@@ -142,109 +171,105 @@ impl Server {
         Ok(())
     }
     
-
-    // pub async fn recv_leader(self: Arc<Self>) {
-    //     loop {
-    //         let mut buf = vec![0u8; 1024];
-    //         let socket_server = self.socket_server.clone();
-    //         let leader_lock = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
-    
-    //         // Try to receive messages
-    //         match socket_server.recv_from(&mut buf).await {
-    //             Ok((len, addr)) => {
-    //                 let data = buf[..len].to_vec();
-    //                 let message = String::from_utf8_lossy(&data).to_string();
-    //                 println!("Received '{}' from {}", message, addr);
-    
-    //                 // Spawn an async task to handle each message
-    //                 tokio::spawn(async move {
-    //                     // Check if the message is in the correct format "Lead: id"
-    //                     if let Some(id_str) = message.strip_prefix("Lead:") {
-    //                         // Parse the id from the message
-    //                         if let Ok(id) = id_str.trim().parse::<u32>() {
-    //                             let mut leader = leader_lock.write().expect("Failed to write leader");
-    //                             *leader = id;
-    //                             println!("Updated leader to '{}' from {}", id, addr);
-    //                         } else {
-    //                             eprintln!("Failed to parse leader id from message: {}", message);
-    //                         }
-    //                     } else {
-    //                         println!("Received invalid message format from {}", addr);
-    //                     }
-    //                 });
-    //             }
-    //             Err(e) => {
-    //                 eprintln!("Failed to receive message: {}", e);
-    //             }
-    //         }
-    //     }
-    // }
-    pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
+    pub async fn recv_leader(self: Arc<Self>) -> std::io::Result<()> {
         loop {
             let mut buf = vec![0u8; 1024];
-            let socket_server = self.socket_server.clone();
-            let db = self.db.clone(); // Clone Arc<Mutex<HashMap<u32, u32>>> for async move
-            let leader_lock = self.leader.clone(); // Clone Arc<RwLock<u32>> for async move
-            
-            // Try to receive messages
+            let socket_server = self.socket_leader.clone();
+    
             match socket_server.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
                     let data = buf[..len].to_vec();
                     let message = String::from_utf8_lossy(&data).to_string();
-                    println!("Received '{}' from {}", message, addr);
-                    
-                    // Spawn an async task to handle each message
-                    tokio::spawn({
-                        let db = db.clone();
-                        let leader_lock = leader_lock.clone();
-                        let self_clone = self.clone();
+                    println!("LEADER Received '{}' from {}", message, addr);
     
+                    tokio::spawn({
+                        let leader_lock = self.leader.clone();
                         async move {
-                            // Check if the message is in the correct format "Lead: id"
-                            if let Some(id_str) = message.strip_prefix("Lead:") {
-                                // Parse the id from the message
+                            if let Some(id_str) = message.strip_prefix("Lead ") {
                                 if let Ok(id) = id_str.trim().parse::<u32>() {
-                                    let mut leader = leader_lock.write().expect("Failed to write leader");
-                                    *leader = id;
+                                    {
+                                        // Scope the lock to minimize duration
+                                        let mut leader = leader_lock.write().expect("Failed to write leader");
+                                        *leader = id;
+                                    }
                                     println!("Updated leader to '{}' from {}", id, addr);
                                 } else {
                                     eprintln!("Failed to parse leader id from message: {}", message);
                                 }
-                            } else if let Some((key, value)) = message.split_once(':') {
-                                // Handle the key:value format
-                                let key = key.trim();
-                                if let Ok(parsed_key) = key.parse::<u32>() {
-                                    if let Ok(value) = value.trim().parse::<u32>() {
-                                        let mut db_lock = db.lock().unwrap();
-                                        db_lock.insert(parsed_key, value);
-    
-                                        if let Ok(Some(new_leader)) = self_clone.clone().choose_leader() {
-                                            let mut leader = leader_lock.write().expect("Failed to write leader");
-                                            *leader = new_leader;
-                                            println!("Updated database with {}:{} new leader: {}", parsed_key, value, new_leader);
-                                        }
-                                    } else {
-                                        eprintln!("Failed to parse value from message: {}", message);
-                                    }
-                                } else {
-                                    eprintln!("Failed to parse key from message: {}", message);
-                                }
-                                let new_leader = self_clone.choose_leader().expect("Failed to choose leader");
-                                let mut leader = leader_lock.write().expect("Failed to write leader");
-                                *leader = new_leader.unwrap();
-                                println!("Updated database with {}:{} new leader: {} ", key, value, *leader);
                             } else {
-                                println!("Received invalid message format from {}", addr);
+                                println!("LEADER Received invalid message format from {}", addr);
                             }
                         }
                     });
                 }
-                Err(e) => {
-                    eprintln!("Failed to receive message: {}", e);
-                }
+                Err(e) => eprintln!("Failed to receive message: {}", e),
             }
         }
     }
+    
+    pub async fn recv_election(self: Arc<Self>) -> std::io::Result<()> {
+        // Clone once outside the loop to avoid redundant cloning inside the loop.
+        
+        loop {
+            let mut buf = vec![0u8; 1024];
+            let socket_server = self.socket_election.clone();
+            let db = self.db.clone();
+            let leader_lock = self.leader.clone();
+            
+            // Receive data from the socket.
+            println!("inside recv_election");
+            match socket_server.recv_from(&mut buf).await {
+                Ok((len, addr)) => {
+                    let data = buf[..len].to_vec();
+                    let message = String::from_utf8_lossy(&data).to_string();
+                    println!("ELECTION Received '{}' from {}", message, addr);
+
+                    // Spawn a new task to process each message independently.
+                    let self_clone = self.clone();
+                    tokio::spawn(async move {
+                        // Parse the message and update the database.
+                        if let Some((key, value)) = message.split_once(":") {
+                            let key = key.trim();
+                            if let Ok(parsed_key) = key.parse::<u32>() {
+                                if let Ok(value) = value.trim().parse::<u32>() {
+                                    {
+                                        // Lock the database only for the duration of the update.
+                                        let mut db_lock = db.lock().expect("Failed to lock db");
+                                        db_lock.insert(parsed_key, value);
+                                    }
+                                    println!("Updated database with {}:{}", parsed_key, value);
+
+                                    // Determine if a new leader should be chosen.
+                                    if let Ok(Some(new_leader)) = self_clone.clone().choose_leader() {
+                                        let mut leader = leader_lock.read().expect("Failed to write leader");
+                                        if *leader != new_leader {
+                                            println!("Updated new leader to {}", new_leader);
+                                            
+                                            // Call send_leader asynchronously if a new leader is selected.
+                                            let self_clone = self_clone.clone();
+                                            tokio::spawn(async move {
+                                                if let Err(e) = self_clone.clone().send_leader(Some(new_leader)).await {
+                                                    eprintln!("Failed to send leader update: {}", e);
+                                                }
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    eprintln!("Failed to parse value from message: {}", message);
+                                }
+                            } else {
+                                eprintln!("Failed to parse key from message: {}", message);
+                            }
+                        } else {
+                            println!("ELECTION Received invalid message format from {}", addr);
+                        }
+                    });
+                }
+                Err(e) => eprintln!("Failed to receive message: {}", e),
+            }
+        }
+    }
+
     
     
     
@@ -277,11 +302,10 @@ impl Server {
     }
 
     pub async fn send_info(self:Arc<Self>) -> std::io::Result<()> {
-        let socket_server = self.socket_server.clone();
+        let socket_server = self.socket_election.clone();
         let multicast_addr = self.multicast_addr;
-        let port_server = self.port_server;
+        let port_server = self.port_election;
         let id = self.id;
-        print!("inside send_info"); 
         // Spawn a new async task for sending info
         tokio::spawn(async move {
             let mut sys = System::new_all();
