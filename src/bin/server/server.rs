@@ -4,7 +4,7 @@ use std::net::Ipv4Addr;
 use dotenv::dotenv;
 use std::env;
 use std::str::FromStr;
-use tokio::time::{self, Duration};
+use tokio::time::{self, Duration,timeout};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::Mutex as tokioMutex;
@@ -30,7 +30,6 @@ pub struct Server {
     port_server: u16,
     port_bully: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
-    random_number: Arc<tokioMutex<u32>>,
 }
 
 
@@ -81,7 +80,6 @@ impl Server {
             port_server,
             port_bully,
             db,
-            random_number: Arc::new(tokioMutex::new(0)),
         }
     }
 
@@ -333,19 +331,21 @@ impl Server {
     //algorithm takes in a port number, an id you specify (mostly for debugging), and an array of strings which is the other hosts' ips
 
 
-    pub async fn send_bully_info(self:Arc<Self>){
+    pub async fn send_bully_info(self:Arc<Self>,random_number: u32) {
         let multicast_address = SocketAddr::new(self.multicast_addr.into(), self.port_bully); //multicast address + bully port dk if this is right
 
         let election_socket = self.socket_bully.clone();
         let self_clone = self.clone();
         task::spawn(async move {
-            let random_number = *self_clone.random_number.lock().await;
             let msg = (self_clone.id, random_number, *self_clone.failed.read().unwrap());
             let msg_bytes = bincode::serialize(&msg).unwrap();
     
        
             if let Err(e) = election_socket.send_to(&msg_bytes, multicast_address).await {
                 eprintln!("Failed to send multicast message: {}", e);
+            }
+            else{
+                println!("Sent message: {:?}", msg);
             }
         });
     }
@@ -354,6 +354,9 @@ impl Server {
         let socket = self.socket_bully.clone();
         let multicast_addr = self.multicast_addr;
         let port_bully = self.port_bully;
+
+        let start_time = time::Instant::now();
+        let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
     
         println!("Host {} listening on {}", self.id, port_bully);
     
@@ -362,37 +365,44 @@ impl Server {
         let socket_listener = socket.clone();
     
      
-        task::spawn(async move { //task for listening for messages
-            let mut buf = [0u8; 1024]; 
-            while let Ok((size, addr)) = socket_listener.recv_from(&mut buf).await {
-                if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
-                    println!("Received message from {}: (id: {}, random_number: {}, failed: {})", addr, id, random_number, failed);
-                    let _ = listening_tx.send((id, random_number, failed)); //store in the tx channel
+        task::spawn(async move {
+            let mut buf = [0u8; 1024];
+            loop {
+                match timeout(timeout_duration, socket_listener.recv_from(&mut buf)).await {
+                    Ok(Ok((size, addr))) => {
+                        if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
+                            println!("Received message from {}: (id: {}, random_number: {}, failed: {})", addr, id, random_number, failed);
+                            let _ = listening_tx.send((id, random_number, failed));
+                        }
+                    },
+                    Ok(Err(e)) => {
+                        eprintln!("Error receiving message: {:?}", e);
+                    },
+                    Err(_) => {
+                        println!("Timeout reached with no messages received within {:?}", timeout_duration);
+                        break; // Exit the loop if the timeout is reached
+                    }
                 }
             }
         });
     
         
-        let mut random_number = self.random_number.lock().await;
-        *random_number = rand::thread_rng().gen_range(0..100); //generate the number for sim fail
+        let mut random_number = rand::thread_rng().gen_range(0..100);
         println!("Host {} generated identifier: {:?}", self.id, random_number);
+        self.clone().send_bully_info(random_number).await;
+
     
+
         
-        let election_socket = socket.clone();
-        let multicast_address = SocketAddr::new(multicast_addr.into(), port_bully); //multicast address + bully port dk if this is right
-    
-        self.clone().send_bully_info().await;
-    
-        let mut numbers: Vec<(u32, Arc<tokioMutex<u32>>)> = vec![(self.id, self.random_number.clone())];
+        let mut numbers: Vec<(u32, u32)> = vec![(self.id, random_number)];
         let mut received_hosts = HashSet::new(); //for o(1) lookup on whether we have received a message from a host
         
         received_hosts.insert(self.id);
         received_hosts.insert(info.0 as u32);
 
-        numbers.push((info.0 as u32, Arc::new(tokioMutex::new(info.1))));
+        numbers.push((info.0 as u32, info.1));
     
-        let start_time = time::Instant::now();
-        let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
+        
     
         // Main loop for receiving messages within the timeout
         println!("here 1");
@@ -400,7 +410,7 @@ impl Server {
             match time::timeout(timeout_duration - start_time.elapsed(), rx.recv()).await {
                 Ok(Ok((id, random_number, failed))) => {
                     if !received_hosts.contains(&id) {
-                        numbers.push((id, Arc::new(tokioMutex::new(random_number))));
+                        numbers.push((id, random_number));
                         received_hosts.insert(id);
                     }
                 }
@@ -408,24 +418,13 @@ impl Server {
             }
         }    
         println!("here 2");
-        let mut results = Vec::new();
-
 
         //fix the code so it doesnt get stuck waiting
 
         println!("Checking received hosts and numbers");
-        for (id, number_mutex) in &numbers {
-            println!("Attempting to lock number for host {}", id);
-            if let Ok(number) = number_mutex.try_lock() {
-                results.push((*id, *number));
-                println!("Locked and pushed number for host {}", id);
-            } else {
-                println!("Could not lock number for host {}, skipping", id);
-            }
-        }
         let mut max_host: Option<(u32, u32)> = None;
 
-        for (id, number) in &results {
+        for (id, number) in &numbers {
             match max_host {
                 Some((_, max_number)) => {
                     if number > &max_number { 

@@ -33,8 +33,9 @@ async fn main() -> std::io::Result<()> {
 
     //add loop to keep the server running
     loop {
-        let server_clone = server.clone();
-        server_clone.send_bully_info().await;
+        // let server_clone = server.clone();
+        // server_clone.send_bully_info().await;
+        sleep(Duration::from_secs(5)).await;
     
     }
        
