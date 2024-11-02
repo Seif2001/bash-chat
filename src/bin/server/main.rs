@@ -9,7 +9,7 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
 
     // Initialize the Server
-    let server = server::Server::new(2, false, Arc::new(RwLock::new(1))).await;
+    let server = server::Server::new(2, false, Arc::new(RwLock::new(2))).await;
 
     // Join multicast group
     let server = Arc::new(server);
