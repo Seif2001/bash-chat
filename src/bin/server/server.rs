@@ -7,21 +7,34 @@ use std::str::FromStr;
 use tokio::time::{self, Duration};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
+use tokio::task;
+use rand::Rng;
+use serde::{Serialize, Deserialize};
+use std::collections::HashSet;
 
 use sysinfo::{System};
 use crate::middleware;
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Server {
     id: u32,
     failed: bool,
     leader: Arc<RwLock<u32>>,
     socket_client: Arc<UdpSocket>, // for client to server communication
     socket_server: Arc<UdpSocket>, // for server to server communication
+    socket_bully: Arc<UdpSocket>, // for bully algorithm
     multicast_addr: Ipv4Addr,
     interface_addr: Ipv4Addr,
     port_server: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
+    random_number: u32,
 }
+
+
+
+
+
+
 
 impl Server {
     pub async fn new(id: u32, failed: bool, leader: Arc<RwLock<u32>>) -> Server {
@@ -29,15 +42,22 @@ impl Server {
         
         let port_server = env::var("PORT_SERVER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
         let port_client = env::var("PORT_CLIENT").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
+        let port_bully = env::var("PORT_BULLY").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
+
 
         // Define server addresses
         let server_ip = "0.0.0.0:";
         let server_address_server = format!("{}{}", server_ip, port_server);
         let server_address_client = format!("{}{}", server_ip, port_client);
+        
+        let server_address_bully = format!("{}{}", server_ip, port_bully);
 
         // Bind server and client sockets asynchronously
         let socket_server = Arc::new(UdpSocket::bind(server_address_server).await.expect("Failed to bind server socket"));
         let socket_client = Arc::new(UdpSocket::bind(server_address_client).await.expect("Failed to bind client socket"));
+
+        let socket_bully = Arc::new(UdpSocket::bind(server_address_bully).await.expect("Failed to bind bully socket"));
+
 
         // Retrieve multicast and interface addresses
         let multicast_addr = Ipv4Addr::from_str(&env::var("MULTICAST_ADDRESS").expect("MULTICAST_ADDRESS not set")).expect("Invalid multicast address");
@@ -50,12 +70,14 @@ impl Server {
             id,
             failed,
             leader,
-            socket_server,
             socket_client,
+            socket_server,
+            socket_bully,
             multicast_addr,
             interface_addr,
             port_server,
             db,
+            random_number: 0,
         }
     }
 
@@ -100,7 +122,9 @@ impl Server {
             let message = format!("Lead:{}", id.clone());
             
             // Continue sending messages while not the leader
-            while *self.leader.read().expect("Failed to read leader") == id {
+            let leader = *self.leader.read().expect("Failed to read leader");
+            println!("I think the leader is {}", leader);
+            while leader == id {
                 println!("Sending message: {}", message);
                 match middleware::send_message(socket_server.clone(), multicast_addr, port_server, message.clone()).await {
                     Ok(_) => println!("Message sent successfully"),
@@ -196,7 +220,7 @@ impl Server {
                                 let new_leader = self_clone.choose_leader().expect("Failed to choose leader");
                                 let mut leader = leader_lock.write().expect("Failed to write leader");
                                 *leader = new_leader.unwrap();
-                                println!("Updated database with {}:{} new leader: {} ", key, value, new_leader.unwrap());
+                                println!("Updated database with {}:{} new leader: {} ", key, value, *leader);
                             } else {
                                 eprintln!("Failed to parse value from message: {}", message);
                             }
@@ -292,4 +316,99 @@ impl Server {
 
     //     // Optionally add client processing logic here
     // }
+
+    //algorithm takes in a port number, an id you specify (mostly for debugging), and an array of strings which is the other hosts' ips
+
+
+    pub async fn send_bully_info(self:Arc<Self>){
+
+        task::spawn(async move {
+            let msg = (self.id, self.random_number, self.failed);
+            let msg_bytes = bincode::serialize(&msg).unwrap(); 
+    
+       
+            if let Err(e) = election_socket.send_to(&msg_bytes, multicast_address).await {
+                eprintln!("Failed to send multicast message: {}", e);
+            }
+        });
+    }
+
+    pub async fn bully_algorithm(self: Arc<Self>, info: (i32, u32, bool)) {
+        let socket = self.socket_bully.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_bully = self.port_bully;
+    
+        println!("Host {} listening on {}", self.id, port_bully);
+    
+        let (tx, mut rx) = broadcast::channel(10);  //this is a mpsc channel not a network broadcast channel
+        let listening_tx = tx.clone();
+        let socket_listener = socket.clone();
+    
+     
+        task::spawn(async move { //task for listening for messages
+            let mut buf = [0u8; 1024]; 
+            while let Ok((size, addr)) = socket_listener.recv_from(&mut buf).await {
+                if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
+                    println!("Received message from {}: (id: {}, random_number: {}, failed: {})", addr, id, random_number, failed);
+                    let _ = listening_tx.send((id, random_number, failed)); //store in the tx channel
+                }
+            }
+        });
+    
+        
+        self.random_number = rand::thread_rng().gen_range(0..100); //generate the number for sim fail
+        println!("Host {} generated identifier: {}", self.id, self.random_number);
+    
+        
+        let election_socket = socket.clone();
+        let multicast_address = SocketAddr::new(multicast_addr.into(), port_bully); //multicast address + bully port dk if this is right
+    
+        self.send_bully_info();
+    
+        let mut numbers = vec![(self.id, self.random_number)];
+        let mut received_hosts = HashSet::new(); //for o(1) lookup on whether we have received a message from a host
+        received_hosts.insert(self.id);
+        received_hosts.insert(info.0 as u32);
+        numbers.push((info.0 as u32, info.1));
+    
+        let start_time = time::Instant::now();
+        let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
+    
+        // Main loop for receiving messages within the timeout
+        while start_time.elapsed() < timeout_duration {
+            match time::timeout(timeout_duration - start_time.elapsed(), rx.recv()).await {
+                Ok(Ok((id, random_number, failed))) => {
+                    if !received_hosts.contains(&id) {
+                        numbers.push((id, random_number));
+                        received_hosts.insert(id);
+                    }
+                }
+                _ => break, // Break on timeout or error
+            }
+        }
+    
+        if let Some(max_host) = numbers.iter().max_by_key(|x| x.1) { //check if we're the highest number
+            self.failed = max_host.0 == self.id;
+            println!("Host {}: {}", self.id, if self.failed { "failed" } else { "active" });
+        }
+    }
+    
+    
+
+
+    pub async fn bully_listener(self: Arc<Self>) {
+        let socket = self.socket_bully.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_bully = self.port_bully;
+
+        let mut buf = [0u8; 1024];
+
+        loop {
+            let (size, _) = socket.recv_from(&mut buf).await.unwrap();
+            if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
+                println!("Starting sim fail due to received message: {:?}", (id, random_number, failed));
+                let _ = bully_algorithm(port, curr_id, other_hosts.clone(),socket.clone(),(id, random_number, failed)).await; 
+            }
+        }
+    }
 }
