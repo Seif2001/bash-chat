@@ -7,6 +7,7 @@ use std::str::FromStr;
 use tokio::time::{self, Duration};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
+use tokio::sync::Mutex as tokioMutex;
 use tokio::task;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
@@ -29,7 +30,7 @@ pub struct Server {
     port_server: u16,
     port_bully: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
-    random_number: Arc<Mutex<u32>>,
+    random_number: Arc<tokioMutex<u32>>,
 }
 
 
@@ -80,7 +81,7 @@ impl Server {
             port_server,
             port_bully,
             db,
-            random_number: Arc::new(Mutex::new(0)),
+            random_number: Arc::new(tokioMutex::new(0)),
         }
     }
 
@@ -336,9 +337,10 @@ impl Server {
         let multicast_address = SocketAddr::new(self.multicast_addr.into(), self.port_bully); //multicast address + bully port dk if this is right
 
         let election_socket = self.socket_bully.clone();
+        let self_clone = self.clone();
         task::spawn(async move {
-            let random_number = *self.random_number.lock().unwrap();
-            let msg = (self.id, random_number, *self.failed.read().unwrap());
+            let random_number = *self_clone.random_number.lock().await;
+            let msg = (self_clone.id, random_number, *self_clone.failed.read().unwrap());
             let msg_bytes = bincode::serialize(&msg).unwrap();
     
        
@@ -371,9 +373,9 @@ impl Server {
         });
     
         
-        let mut random_number = self.random_number.lock().unwrap();
+        let mut random_number = self.random_number.lock().await;
         *random_number = rand::thread_rng().gen_range(0..100); //generate the number for sim fail
-        println!("Host {} generated identifier: {:?}", self.id, self.random_number);
+        println!("Host {} generated identifier: {:?}", self.id, random_number);
     
         
         let election_socket = socket.clone();
@@ -381,29 +383,47 @@ impl Server {
     
         self.clone().send_bully_info().await;
     
-        let mut numbers = vec![(self.id, self.random_number.clone())];
+        let mut numbers: Vec<(u32, Arc<tokioMutex<u32>>)> = vec![(self.id, self.random_number.clone())];
         let mut received_hosts = HashSet::new(); //for o(1) lookup on whether we have received a message from a host
+        
         received_hosts.insert(self.id);
         received_hosts.insert(info.0 as u32);
-        numbers.push((info.0 as u32, Arc::new(Mutex::new(info.1))));
+
+        numbers.push((info.0 as u32, Arc::new(tokioMutex::new(info.1))));
     
         let start_time = time::Instant::now();
         let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
     
         // Main loop for receiving messages within the timeout
+        println!("here 1");
         while start_time.elapsed() < timeout_duration {
             match time::timeout(timeout_duration - start_time.elapsed(), rx.recv()).await {
                 Ok(Ok((id, random_number, failed))) => {
                     if !received_hosts.contains(&id) {
-                        numbers.push((id, self.random_number.clone()));
+                        numbers.push((id, Arc::new(tokioMutex::new(random_number))));
                         received_hosts.insert(id);
                     }
                 }
                 _ => break, // Break on timeout or error
             }
+        }    
+        println!("here 2");
+        let mut results = Vec::new();
+
+
+        //fix the code so it doesnt get stuck waiting
+
+        println!("Checking received hosts and numbers");
+        for (id, number_mutex) in &numbers {
+            println!("Attempting to lock number for host {}", id);
+            if let Ok(number) = number_mutex.try_lock() {
+                results.push((*id, *number));
+                println!("Locked and pushed number for host {}", id);
+            } else {
+                println!("Could not lock number for host {}, skipping", id);
+            }
         }
-    
-        if let Some(max_host) = numbers.iter().max_by_key(|x| *x.1.lock().unwrap()) { //check if we're the highest number
+        if let Some(max_host) = results.iter().max_by_key(|x| x.1) { //check if we're the highest number
             let mut failed = self.failed.write().unwrap();
             *failed = max_host.0 == self.id;
             let failed = *self.failed.read().unwrap();
@@ -424,8 +444,10 @@ impl Server {
         loop {
             let (size, _) = socket.recv_from(&mut buf).await.unwrap();
             if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
+                if id != self.id as i32 {
                 println!("Starting sim fail due to received message: {:?}", (id, random_number, failed));
                 self.clone().bully_algorithm((id, random_number, failed)).await; 
+                }
             }
         }
     }

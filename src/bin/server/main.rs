@@ -16,16 +16,27 @@ async fn main() -> std::io::Result<()> {
     server.clone().join().await.expect("Failed to join multicast group");
 
     // Set up tasks for sending, receiving, and processing client messages
-    let server_clone = server.clone();
+    //let server_clone = server.clone();
 
-    server_clone.election().await.expect("Failed to elect leader");
+    //server_clone.election().await.expect("Failed to elect leader");
+
+
+    //dont wait for bullt listener star a new task
+
     let server_clone = server.clone();
-    server_clone.bully_listener().await;
+    tokio::task::spawn(async move {
+        server_clone.bully_listener().await;
+    });
+
+
+    let server_clone = server.clone();
+    server_clone.send_bully_info().await;
+
 
     //add loop to keep the server running
-    // loop {
-    //     sleep(Duration::from_secs(1)).await;
-    // }
+    loop {
+        sleep(Duration::from_secs(1)).await;
+    }
        
 
 
