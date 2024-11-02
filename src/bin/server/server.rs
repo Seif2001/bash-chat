@@ -423,11 +423,25 @@ impl Server {
                 println!("Could not lock number for host {}, skipping", id);
             }
         }
-        if let Some(max_host) = results.iter().max_by_key(|x| x.1) { //check if we're the highest number
+        let mut max_host: Option<(u32, u32)> = None;
+
+        for (id, number) in &results {
+            match max_host {
+                Some((_, max_number)) => {
+                    if number > &max_number { 
+                        max_host = Some((*id, *number));
+                    }
+                }
+                None => {
+                    max_host = Some((*id, *number)); 
+                }
+            }
+        }
+
+        if let Some((max_id, _)) = max_host {
             let mut failed = self.failed.write().unwrap();
-            *failed = max_host.0 == self.id;
-            let failed = *self.failed.read().unwrap();
-            println!("Host {}: {}", self.id, if failed { "failed" } else { "active" });
+            *failed = max_id == self.id;
+            println!("Host {}: {}", self.id, if *failed { "failed" } else { "active" });
         }
     }
     
@@ -447,6 +461,9 @@ impl Server {
                 if id != self.id as i32 {
                 println!("Starting sim fail due to received message: {:?}", (id, random_number, failed));
                 self.clone().bully_algorithm((id, random_number, failed)).await; 
+                }
+                else{
+                    println!("Received own message, skipping");
                 }
             }
         }
