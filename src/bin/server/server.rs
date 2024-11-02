@@ -107,7 +107,7 @@ impl Server {
     
     pub async fn election(self: Arc<Self>) -> std::io::Result<()> {
         // Spawn each task to run concurrently
-        let send_leader_handle = task::spawn(self.clone().send_leader(None));
+        let send_leader_handle = task::spawn(self.clone().send_leader());
         let send_info_handle = task::spawn(self.clone().send_info());
         let recv_election_handle = task::spawn(self.clone().recv_election());
         let recv_leader_handle = task::spawn(self.clone().recv_leader());
@@ -137,17 +137,11 @@ impl Server {
         Ok(())
     }
 
-    pub async fn send_leader(self:Arc<Self>, leader:Option<u32>) -> std::io::Result<()> {
+    pub async fn send_leader(self:Arc<Self>) -> std::io::Result<()> {
         let socket_leader = self.socket_leader.clone();
         let multicast_addr = self.multicast_addr;
         let port_server = self.port_leader;
-        let mut id;
-        if let Some(c) = leader{
-            id = c;
-        }
-        else{
-            id = self.id;
-        }
+        let id = self.id;
     
         // Spawn a new async task for sending leader messages
         tokio::spawn(async move {
@@ -166,6 +160,30 @@ impl Server {
                 // Sleep for 1 second before sending the next message
                 time::sleep(Duration::from_secs(1)).await;
             }
+        });
+    
+        Ok(())
+    }
+    pub async fn send_leader_only(self:Arc<Self>, id: u32) -> std::io::Result<()> {
+        let socket_leader = self.socket_leader.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_server = self.port_leader;
+
+    
+        // Spawn a new async task for sending leader messages
+        tokio::spawn(async move {
+            let message = format!("Lead {}", id.clone());
+            
+        // Continue sending messages while not the leader
+        
+            println!("Sending message: {}", message);
+            match middleware::send_message(socket_leader.clone(), multicast_addr, port_server, message.clone()).await {
+                Ok(_) => println!("Message sent successfully"),
+                Err(e) => eprintln!("Failed to send RPC: {}", e),
+            }
+
+            // Sleep for 1 second before sending the next message
+            
         });
     
         Ok(())
@@ -248,7 +266,7 @@ impl Server {
                                             // Call send_leader asynchronously if a new leader is selected.
                                             let self_clone = self_clone.clone();
                                             tokio::spawn(async move {
-                                                if let Err(e) = self_clone.clone().send_leader(Some(new_leader)).await {
+                                                if let Err(e) = self_clone.clone().send_leader_only(new_leader).await {
                                                     eprintln!("Failed to send leader update: {}", e);
                                                 }
                                             });
