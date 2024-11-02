@@ -10,7 +10,7 @@ dotenv = "0.15"  # Check for the latest version on crates.io
 sysinfo = "0.32.0"
 bincode = "1.3"
 serde = "*"
-rand = "8"
+rand = "*"
 
 
 [[bin]]

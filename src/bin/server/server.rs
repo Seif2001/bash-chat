@@ -11,14 +11,15 @@ use tokio::task;
 use rand::Rng;
 use serde::{Serialize, Deserialize};
 use std::collections::HashSet;
+use tokio::sync::broadcast;
+use std::net::SocketAddr;
 
 use sysinfo::{System};
 use crate::middleware;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Server {
     id: u32,
-    failed: bool,
+    failed: Arc<RwLock<bool>>,
     leader: Arc<RwLock<u32>>,
     socket_client: Arc<UdpSocket>, // for client to server communication
     socket_server: Arc<UdpSocket>, // for server to server communication
@@ -26,8 +27,9 @@ pub struct Server {
     multicast_addr: Ipv4Addr,
     interface_addr: Ipv4Addr,
     port_server: u16,
+    port_bully: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
-    random_number: u32,
+    random_number: Arc<Mutex<u32>>,
 }
 
 
@@ -68,7 +70,7 @@ impl Server {
 
         Server {
             id,
-            failed,
+            failed: Arc::new(RwLock::new(failed)),
             leader,
             socket_client,
             socket_server,
@@ -76,8 +78,9 @@ impl Server {
             multicast_addr,
             interface_addr,
             port_server,
+            port_bully,
             db,
-            random_number: 0,
+            random_number: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -215,7 +218,7 @@ impl Server {
                                         let mut db_lock = db.lock().unwrap();
                                         db_lock.insert(parsed_key, value);
     
-                                        if let Ok(Some(new_leader)) = self_clone.choose_leader() {
+                                        if let Ok(Some(new_leader)) = self_clone.clone().choose_leader() {
                                             let mut leader = leader_lock.write().expect("Failed to write leader");
                                             *leader = new_leader;
                                             println!("Updated database with {}:{} new leader: {}", parsed_key, value, new_leader);
@@ -330,10 +333,13 @@ impl Server {
 
 
     pub async fn send_bully_info(self:Arc<Self>){
+        let multicast_address = SocketAddr::new(self.multicast_addr.into(), self.port_bully); //multicast address + bully port dk if this is right
 
+        let election_socket = self.socket_bully.clone();
         task::spawn(async move {
-            let msg = (self.id, self.random_number, self.failed);
-            let msg_bytes = bincode::serialize(&msg).unwrap(); 
+            let random_number = *self.random_number.lock().unwrap();
+            let msg = (self.id, random_number, *self.failed.read().unwrap());
+            let msg_bytes = bincode::serialize(&msg).unwrap();
     
        
             if let Err(e) = election_socket.send_to(&msg_bytes, multicast_address).await {
@@ -349,8 +355,8 @@ impl Server {
     
         println!("Host {} listening on {}", self.id, port_bully);
     
-        let (tx, mut rx) = broadcast::channel(10);  //this is a mpsc channel not a network broadcast channel
-        let listening_tx = tx.clone();
+        let (tx, mut rx): (broadcast::Sender<(u32, u32, bool)>, broadcast::Receiver<(u32, u32, bool)>) = broadcast::channel(10);  //this is a mpsc channel not a network broadcast channel
+        let listening_tx: broadcast::Sender<(u32, u32, bool)> = tx.clone();
         let socket_listener = socket.clone();
     
      
@@ -365,20 +371,21 @@ impl Server {
         });
     
         
-        self.random_number = rand::thread_rng().gen_range(0..100); //generate the number for sim fail
-        println!("Host {} generated identifier: {}", self.id, self.random_number);
+        let mut random_number = self.random_number.lock().unwrap();
+        *random_number = rand::thread_rng().gen_range(0..100); //generate the number for sim fail
+        println!("Host {} generated identifier: {:?}", self.id, self.random_number);
     
         
         let election_socket = socket.clone();
         let multicast_address = SocketAddr::new(multicast_addr.into(), port_bully); //multicast address + bully port dk if this is right
     
-        self.send_bully_info();
+        self.clone().send_bully_info().await;
     
-        let mut numbers = vec![(self.id, self.random_number)];
+        let mut numbers = vec![(self.id, self.random_number.clone())];
         let mut received_hosts = HashSet::new(); //for o(1) lookup on whether we have received a message from a host
         received_hosts.insert(self.id);
         received_hosts.insert(info.0 as u32);
-        numbers.push((info.0 as u32, info.1));
+        numbers.push((info.0 as u32, Arc::new(Mutex::new(info.1))));
     
         let start_time = time::Instant::now();
         let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
@@ -388,7 +395,7 @@ impl Server {
             match time::timeout(timeout_duration - start_time.elapsed(), rx.recv()).await {
                 Ok(Ok((id, random_number, failed))) => {
                     if !received_hosts.contains(&id) {
-                        numbers.push((id, random_number));
+                        numbers.push((id, self.random_number.clone()));
                         received_hosts.insert(id);
                     }
                 }
@@ -396,9 +403,11 @@ impl Server {
             }
         }
     
-        if let Some(max_host) = numbers.iter().max_by_key(|x| x.1) { //check if we're the highest number
-            self.failed = max_host.0 == self.id;
-            println!("Host {}: {}", self.id, if self.failed { "failed" } else { "active" });
+        if let Some(max_host) = numbers.iter().max_by_key(|x| *x.1.lock().unwrap()) { //check if we're the highest number
+            let mut failed = self.failed.write().unwrap();
+            *failed = max_host.0 == self.id;
+            let failed = *self.failed.read().unwrap();
+            println!("Host {}: {}", self.id, if failed { "failed" } else { "active" });
         }
     }
     
@@ -416,7 +425,7 @@ impl Server {
             let (size, _) = socket.recv_from(&mut buf).await.unwrap();
             if let Ok((id, random_number, failed)) = bincode::deserialize(&buf[..size]) {
                 println!("Starting sim fail due to received message: {:?}", (id, random_number, failed));
-                let _ = bully_algorithm(port, curr_id, other_hosts.clone(),socket.clone(),(id, random_number, failed)).await; 
+                self.clone().bully_algorithm((id, random_number, failed)).await; 
             }
         }
     }
