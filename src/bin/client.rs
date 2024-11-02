@@ -1,34 +1,183 @@
+
 use std::net::UdpSocket;
-use std::io::{self, Write};
+use std::fs::{File, read_dir};
+use std::io::{self, Read, Write};
+use std::time::Duration;
+// use std::io;
 
-fn main() -> io::Result<()> {
-    // Create a UDP socket
-    let socket = UdpSocket::bind("0.0.0.0:0")?; // Bind to any available local address
-    let server_addr = "172.20.10.2:6379"; // Server address
+pub mod image_processor; // Add this if image_processor.rs is in the same directory
+use image_processor::decode_image;
 
-    println!("UDP client is running. Type 'SET <key> <value>' or 'GET <key>' to interact.");
+
+
+
+// fn decode_received_image() {
+//     let encoded_image_path = "received_encoded_image.png";
+//     let output_image_path = "decrypted_image.png";
+
+//     println!("Decoding received image...");
+
+//     // Call `decode_image` and handle success or failure
+//     match decode_image(encoded_image_path.to_string(), output_image_path.to_string()) {
+//         Ok(_) => println!("Image successfully decoded and saved as '{}'", output_image_path),
+//         Err(e) => println!("Failed to decode and save image: {:?}", e),
+//     }
+// }
+
+fn decode_received_image() {
+    let encoded_image_path = "client_received_encoded_image.png"; // Corrected file name
+    let output_image_path = "decrypted_image.png";
+
+    println!("Decoding received image...");
+
+    // Call `decode_image` and handle success or failure
+    match decode_image(encoded_image_path.to_string(), output_image_path.to_string()) {
+        Ok(_) => println!("Image successfully decoded and saved as '{}'", output_image_path),
+        Err(e) => println!("Failed to decode and save image: {:?}", e),
+    }
+}
+
+
+
+fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
+    let mut buf = [0u8; 1028];
+    let mut expected_chunk_index = 0;
+    let mut file: Option<File> = None;
+
+    println!("Waiting to receive encoded image from server on socket: {}...", socket.local_addr()?);
 
     loop {
-        // Read user input
-        let mut input = String::new();
-        print!("> ");
-        io::stdout().flush()?; // Flush stdout to ensure prompt appears
-        io::stdin().read_line(&mut input)?;
+        match socket.recv_from(&mut buf) {
+            Ok((len, server_addr)) => {
+                if len == 3 && &buf[..len] == b"END" {
+                    println!("End of encoded image transmission received.");
+                    if let Some(f) = file {
+                        f.sync_all()?; // Ensure all data is written to disk
+                        println!("Encoded image successfully saved as 'client_received_encoded_image.png'");
+                    } else {
+                        println!("No data received.");
+                    }
+                    break;
+                }
 
-        let input = input.trim();
-        if input.is_empty() {
-            continue; // Skip empty input
+                if file.is_none() {
+                    file = Some(File::create("client_received_encoded_image.png")?);
+                }
+
+                let chunk_index = i32::from_be_bytes(buf[..4].try_into().unwrap());
+
+                if chunk_index == expected_chunk_index {
+                    if let Some(f) = file.as_mut() {
+                        f.write_all(&buf[4..len])?;
+                    }
+                    expected_chunk_index += 1;
+                    socket.send_to(&chunk_index.to_be_bytes(), server_addr)?;
+                } else {
+                    println!("Received out-of-order chunk {}", chunk_index);
+                }
+            }
+            Err(e) => {
+                println!("Error receiving data: {:?}", e);
+                return Err(e);
+            }
         }
-
-        // Send the command to the server
-        socket.send_to(input.as_bytes(), server_addr)?;
-
-        // Prepare a buffer to receive the response
-        let mut buf = [0; 1024];
-        let (len, _addr) = socket.recv_from(&mut buf)?;
-        let response = String::from_utf8_lossy(&buf[..len]); // Convert response to a String
-
-        // Print the server's response
-        println!("Response: {}", response);
     }
+
+    decode_received_image();
+    Ok(())
+}
+
+fn send_image_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str) -> io::Result<()> {
+    let mut file = File::open(image_path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+
+    let chunk_size = 1024;
+    let total_chunks = (buffer.len() as f64 / chunk_size as f64).ceil() as i32;
+
+    let mut chunk_index: i32 = 0;
+    // Send total number of chunks before image data
+    let num_chunks_bytes = total_chunks.to_be_bytes();
+    // socket.send_to(&num_chunks_bytes, server_addr)?;
+
+    println!("\n\nSending image file of {} bytes in {} chunks...", buffer.len(), total_chunks);
+    println!("********************************");
+    println!("********************************");
+
+    for chunk in buffer.chunks(chunk_size) {
+        loop {
+            let mut packet = Vec::with_capacity(chunk.len() + 4);
+            packet.extend_from_slice(&chunk_index.to_be_bytes()); // Add the chunk index
+            packet.extend_from_slice(chunk);
+
+            socket.send_to(&packet, server_addr)?;
+
+            // Set a timeout for receiving the acknowledgment
+            socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+            let mut ack_buf = [0u8; 4];
+
+            match socket.recv_from(&mut ack_buf) {
+                Ok((4, _)) if ack_buf == chunk_index.to_be_bytes() => {
+                    let progress = (chunk_index + 1) as f64 / total_chunks as f64 * 100.0;
+                    print!("\rProgress: {:.2}% - Chunk {} acknowledged", progress, chunk_index);
+                    io::stdout().flush().unwrap(); // Flush to update the same line
+                    break; // Proceed to next chunk
+                }
+                _ => {
+                    println!("Timeout or wrong acknowledgment for chunk {}, retrying...", chunk_index);
+                    continue; // Retry the same chunk
+                }
+            }
+        }
+        chunk_index += 1;
+    }
+    // Send an end-of-transmission signal
+    socket.send_to(b"END", server_addr)?;
+    println!("\nImage sent successfully to {}", server_addr);
+    println!("********************************");
+    println!("********************************\n\n");
+
+    Ok(())
+}
+
+// Function to send all images in a directory to the server
+fn send_all_images_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str) -> io::Result<()> {
+    for entry in read_dir(image_path)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() {
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                println!("\nSending file: {}", file_name);
+                send_image_to_server(socket, server_addr, path.to_str().unwrap())?;
+                println!("Finished sending file: {}\n", file_name);
+            }
+        }
+    }
+    Ok(())
+}
+
+
+
+
+fn main() -> io::Result<()> {
+    // Separate socket for sending
+    let send_socket = UdpSocket::bind("0.0.0.0:9000")?;
+    // Get the bound port of send_socket and add 1 to it
+    let receive_port = send_socket.local_addr()?.port() + 1;
+
+    // Separate socket for receiving, bound to send_socket's port + 1
+    let receive_socket = UdpSocket::bind(("0.0.0.0", receive_port))?;
+
+    let server_addr = "10.7.57.111:6380";
+    let image_name = "image1.jpg";
+    let image_path = "./raw_images/";
+
+    // Send image to the server using the send socket
+    send_image_to_server(&send_socket, server_addr, &format!("{}{}", image_path, image_name))?;
+
+    // Listen for the encoded image data from the server using the receive socket
+    receive_encoded_image(&receive_socket)?;
+
+    Ok(())
 }
