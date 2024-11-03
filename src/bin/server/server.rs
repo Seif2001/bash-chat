@@ -271,7 +271,7 @@ impl Server {
     
         // If this server is the leader and election has finished, construct the message
         if leader && !election {
-            message = format!("{}:{} is the new leader", interface_addr, port_server_recv);
+            message = format!("{}:{}", interface_addr, port_server_recv);
         } else {
             println!("This server is not the leader, not sending any message to the client.");
             return Ok(()); // Exit early if not the leader or election is ongoing
@@ -281,7 +281,7 @@ impl Server {
     
         // Create the destination socket address using the interface address and port
         let client_addr = *client_addr.lock().await;
-        let destination_addr = SocketAddr::new(client_addr.into(), port_server_recv);
+        let destination_addr = SocketAddr::new(client_addr.into(), 9002);
     
         // Send the message to the client at the destination address
         match socket_server.send_to(message.as_bytes(), &destination_addr).await {
