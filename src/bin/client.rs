@@ -1,8 +1,10 @@
 
+use core::str;
 use std::net::UdpSocket;
 use std::fs::{File, read_dir};
 use std::io::{self, Read, Write};
 use std::time::Duration;
+use std::net::{Ipv4Addr};
 // use std::io;
 
 pub mod image_processor; // Add this if image_processor.rs is in the same directory
@@ -87,7 +89,54 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
     Ok(())
 }
 
+// Function to send a message to the server 
+fn send_start_message(socket: &UdpSocket, server_addr: &str, message: &str) -> io::Result<()> {
+    socket.send_to(message.as_bytes(), server_addr)?;
+    println!("Message sent to server at {}", server_addr);
+    Ok(())
+}
+
+fn receive_leader(socket: &UdpSocket) -> io::Result<String> {
+    loop {
+        let mut buf = [0u8; 1024]; // Buffer for receiving the string data
+
+        // Try to receive data from the socket
+        match socket.recv_from(&mut buf) {
+            Ok((len, _)) => {
+                // Convert the received bytes to a string slice
+                if let Ok(message) = str::from_utf8(&buf[..len]) {
+                    println!("Received leader address: '{}'", message);
+                    // Validate if the message is in the "0.0.0.0:port" format
+                    if message.parse::<std::net::SocketAddr>().is_ok() {
+                        // Return the received string as-is
+                        return Ok(message.to_string());
+                    } else {
+                        eprintln!("Received invalid address format: '{}'", message);
+                    }
+                } else {
+                    eprintln!("Failed to parse string from received data");
+                }
+            }
+            Err(e) => return Err(e), // Return error if there's an issue with the socket
+        }
+    }
+}
+
+// Function to send an image to the server
+fn send_image_to_leader(socket: &UdpSocket, server_addr: &str, image_path: &str) -> io::Result<()>{
+    send_start_message(socket, server_addr, "START")?;
+    let leader_address = receive_leader(socket)?;
+    send_image_to_server(socket, &leader_address, image_path)?;
+    Ok(())
+}
+
 fn send_image_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str) -> io::Result<()> {
+
+    // fn send_message_to_server(socket: &UdpSocket, server_addr: &str, message: &str) -> io::Result<()> {
+    
+
+
+
     let mut file = File::open(image_path)?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
@@ -165,16 +214,17 @@ fn main() -> io::Result<()> {
     let send_socket = UdpSocket::bind("0.0.0.0:9000")?;
     // Get the bound port of send_socket and add 1 to it
     let receive_port = send_socket.local_addr()?.port() + 1;
-
+    
     // Separate socket for receiving, bound to send_socket's port + 1
     let receive_socket = UdpSocket::bind(("0.0.0.0", receive_port))?;
 
-    let server_addr = "127.0.0.1:6372";
+    let server_addr = "10.7.57.111:6274";
     let image_name = "image1.jpg";
     let image_path = "./raw_images/";
 
     // Send image to the server using the send socket
-    send_image_to_server(&send_socket, server_addr, &format!("{}{}", image_path, image_name))?;
+    send_image_to_leader(&send_socket, server_addr, &format!("{}{}", image_path, image_name))?;
+    //send_image_to_server(&send_socket, server_addr, &format!("{}{}", image_path, image_name))?;
 
     // Listen for the encoded image data from the server using the receive socket
     receive_encoded_image(&receive_socket)?;

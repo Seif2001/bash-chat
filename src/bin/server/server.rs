@@ -2,7 +2,7 @@ use tokio::net::UdpSocket;
 use std::fmt::format;
 use std::net::Ipv4Addr;
 use dotenv::dotenv;
-use std::env;
+use std::{clone, env};
 use std::str::FromStr;
 use tokio::time::{self, Duration,timeout};
 use std::collections::HashMap;
@@ -15,35 +15,67 @@ use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::fs::File;
 use crate::middleware;
+use std::sync::{RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 
 pub struct Server {
     id: u32,
-    failed: bool,
-    leader: u32,
-    socket_client: Arc<UdpSocket>, // for client to server communication
-    socket_server: Arc<UdpSocket>, // for server to server communication
+    failed: Arc<RwLock<bool>>,
+    leader: Arc<AtomicBool>,     // Changed from RwLock to AtomicBool
+    election: Arc<AtomicBool>,   // Changed from RwLock to AtomicBool
+    socket_client_send: Arc<UdpSocket>, // for client to server communication
+    socket_leader: Arc<UdpSocket>, // for server to server communication
+    socket_election: Arc<UdpSocket>, // for server to server communication
+    socket_bully: Arc<UdpSocket>, // for bully algorithm
+    socket_server:  Arc<UdpSocket>, // for bully algorithm
+    socket_server_recv:  Arc<UdpSocket>, // for bully algorithm
     multicast_addr: Ipv4Addr,
     interface_addr: Ipv4Addr,
-    port_server: u16,
+    port_leader: u16,
+    socket_server_leader: Arc<UdpSocket>,
+    port_election: u16,
+    port_bully: u16,
+    port_server_recv: u16,
     db: Arc<Mutex<HashMap<u32, u32>>>, // Wrap db in Arc<Mutex> for thread-safe access
+    random_number: Arc<Mutex<u32>>,
+    client_address: Arc<Mutex<Ipv4Addr>>,
 }
 
+
 impl Server {
-    pub async fn new(id: u32, failed: bool, leader: u32) -> Server {
+    pub async fn new(id: u32, failed: bool, leader: Arc<AtomicBool>, election: Arc<AtomicBool>) -> Server {
         dotenv().ok();
         
-        let port_server = env::var("PORT_SERVER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
+        let port_leader = env::var("PORT_LEADER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
+        let port_election = env::var("PORT_ELECTION").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
         let port_client = env::var("PORT_CLIENT").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
+        let port_bully = env::var("PORT_BULLY").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
+        let port_server = env::var("PORT_SERVER").expect("PORT_SERVER not set").parse::<u16>().expect("Invalid server port");
+        let port_server_recv = env::var("PORT_SERVER_RECV").expect("PORT_SERVER_RECV not set").parse::<u16>().expect("Invalid server port");
+        let port_server_leader = env::var("PORT_SERVER_LEADER").expect("PORT_SERVER_LEADER not set").parse::<u16>().expect("Invalid server port");
+    
+
 
         // Define server addresses
         let server_ip = "0.0.0.0:";
-        let server_address_server = format!("{}{}", server_ip, port_server);
+        let server_address_election = format!("{}{}", server_ip, port_election);
+        let server_address_leader = format!("{}{}", server_ip, port_leader);
         let server_address_client = format!("{}{}", server_ip, port_client);
+        let server_address_server = format!("{}{}", server_ip, port_server);
+        let server_address_server_recv = format!("{}{}", server_ip, port_server_recv);
+        let server_address_server_leader = format!("{}{}", server_ip, port_server_leader);
+
+        let server_address_bully = format!("{}{}", server_ip, port_bully);
 
         // Bind server and client sockets asynchronously
+        let socket_election = Arc::new(UdpSocket::bind(server_address_election).await.expect("Failed to bind server socket"));
+        let socket_leader = Arc::new(UdpSocket::bind(server_address_leader).await.expect("Failed to bind server socket"));
+        let socket_client_send = Arc::new(UdpSocket::bind(server_address_client).await.expect("Failed to bind client socket"));
         let socket_server = Arc::new(UdpSocket::bind(server_address_server).await.expect("Failed to bind server socket"));
-        let socket_client = Arc::new(UdpSocket::bind(server_address_client).await.expect("Failed to bind client socket"));
+        let socket_bully = Arc::new(UdpSocket::bind(server_address_bully).await.expect("Failed to bind bully socket"));
+        let socket_server_recv = Arc::new(UdpSocket::bind(server_address_server_recv).await.expect("Failed to bind server socket"));
+        let socket_server_leader = Arc::new(UdpSocket::bind(server_address_server_leader).await.expect("Failed to bind server socket"));
 
         // Retrieve multicast and interface addresses
         let multicast_addr = Ipv4Addr::from_str(&env::var("MULTICAST_ADDRESS").expect("MULTICAST_ADDRESS not set")).expect("Invalid multicast address");
@@ -54,14 +86,25 @@ impl Server {
 
         Server {
             id,
-            failed,
+            failed: Arc::new(RwLock::new(failed)),
             leader,
+            election,
+            socket_client_send,
+            socket_leader,
+            socket_election,
+            socket_bully,
+            socket_server_leader,
             socket_server,
-            socket_client,
+            socket_server_recv,
             multicast_addr,
             interface_addr,
-            port_server,
+            port_leader,
+            port_election,
+            port_bully,
+            port_server_recv,
             db,
+            random_number: Arc::new(Mutex::new(0)),
+            client_address: Arc::new(Mutex::new(Ipv4Addr::from_str("0.0.0.0").expect("Invalid client address"))),
         }
     }
 
@@ -69,158 +112,220 @@ impl Server {
         middleware::join(self.socket_server.clone(), self.interface_addr, self.multicast_addr)
             .await
             .expect("Failed to join multicast group");
-        self.send_info();
-        Ok(())
-    }
 
-    // pub async fn election(self: Arc<Self>) -> std::io::Result<()>{
-    //     let self_clone = self.clone();
-    //     self.send_info().await?;
-    //     self_clone.send_leader().await?;
-    //     Ok(())
-    // }
-
-    // pub async fn recv_info(self: Arc<Self>) -> std::io::Result<()> {
-    //     loop {
-    //         // Spawn a new task for receiving messages
-    //         let socket_server = self.socket_server.clone();
-    //         let db = self.db.clone(); // Clone the Arc<Mutex<HashMap<u32, u32>>>
-    
-    //         tokio::spawn(async move {
-    //             let result = middleware::recv_rpc(socket_server.clone()).await;
-    
-    //             match result {
-    //                 Ok(message) => {
-    //                     // Split the message into id and value
-    //                     let parts: Vec<&str> = message.split(':').collect();
-    //                     if parts.len() == 2 {
-    //                         if let (Ok(id), Ok(value)) = (parts[0].parse::<u32>(), parts[1].parse::<u32>()) {
-    //                             // Lock the database and update the value
-    //                             let mut db = db.lock().unwrap();
-    //                             db.insert(id, value);
-    //                             println!("Updated db with id: {} and value: {}", id, value);
-    //                         } else {
-    //                             eprintln!("Failed to parse id or value from message: {}", message);
-    //                         }
-    //                     }
-    //                 },
-    //                 Err(e) => eprintln!("Failed to receive RPC: {}", e),
-    //             }
-    //         });
-    //     }
-    
-    //     Ok(())
-    // }
-    
-
-    // pub fn choose_leader(mut self:Arc<Self>) -> std::io::Result<()> {
-    //     // Initialize variables to store the minimum value and the corresponding key
-    //     let mut min_key: Option<u32> = None;
-    //     let mut min_value: Option<u32> = None;
-    
-    //     // Iterate through the entries in the HashMap
-    //     let min_key = {
-    //         let db = self.db.lock().unwrap();
-    //         for (&key, &value) in db.iter() {
-    //             // Check if we haven't set a minimum value yet or if the current value is lower than the minimum found
-    //             if min_value.is_none() || value < min_value.unwrap() {
-    //                 min_value = Some(value); // Update the minimum value
-    //                 min_key = Some(key);     // Update the corresponding key
-    //             }
-    //         }
-    //         min_key
-    //     };
-    
-    //     // Return the key with the lowest value, or None if the map is empty
-    //     let mut server = Arc::get_mut(&mut self).expect("Failed to get mutable reference to server");
-    //     server.leader = min_key.unwrap();
-    //     Ok(())
-    // }
-
-    pub async fn send_info(self:Arc<Self>) -> std::io::Result<()> {
-        let socket_server = self.socket_server.clone();
-        let multicast_addr = self.multicast_addr;
-        let port_server = self.port_server;
-        let id = self.id;
-        
-        // Spawn a new async task for sending info
-        tokio::spawn(async move {
-            let mut sys = System::new_all();
-
-            loop {
-                sys.refresh_all(); // Refresh system information
-
-                // Get memory and CPU usage
-                let total_memory = sys.total_memory();
-                let used_memory = sys.used_memory();
-                let cpu_usage = sys.global_cpu_usage();
-
-                // Update shared CPU and memory usage
-                let cpu = cpu_usage as u32; // Update CPU usage
-                let mem = (used_memory as f32 / total_memory as f32 * 100.0) as u32; // Update memory usage
-
-                let message = format!("{}:{}", id, cpu * mem);
-                
-                println!("Sending message: {}", message);
-                middleware::send_rpc(socket_server.clone(), multicast_addr, port_server, message)
-                    .await
-                    .expect("Failed to send RPC");
-
-                time::sleep(Duration::from_secs(1)).await; // Sleep for 1 second
-            }
-        });
+        middleware::join(self.socket_leader.clone(), self.interface_addr, self.multicast_addr)
+        .await
+        .expect("Failed to join multicast group");
         Ok(())
     }
 
     pub async fn send_leader(self:Arc<Self>) -> std::io::Result<()> {
-        let socket_server = self.socket_server.clone();
+        print!("inside send_leader");
+        let socket_leader = self.socket_server.clone();
         let multicast_addr = self.multicast_addr;
-        let port_server = self.port_server;
+        let port_server = self.port_leader;
         let id = self.id;
     
         // Spawn a new async task for sending leader messages
-        tokio::spawn(async move {
-            let message = format!("Lead: {}", id.clone());
-            
+        // tokio::spawn(async move {
+            let message = format!("Lead {}", id.clone());
             // Continue sending messages while not the leader
-            while self.leader == id {
+            
+            while self.leader.load(Ordering::SeqCst) && !self.election.load(Ordering::SeqCst) {
+                
                 println!("Sending message: {}", message);
-                match middleware::send_rpc(socket_server.clone(), multicast_addr, port_server, message.clone()).await {
+                match middleware::send_message(socket_leader.clone(), multicast_addr, port_server, message.clone()).await {
                     Ok(_) => println!("Message sent successfully"),
                     Err(e) => eprintln!("Failed to send RPC: {}", e),
                 }
-    
                 // Sleep for 1 second before sending the next message
                 time::sleep(Duration::from_secs(1)).await;
             }
-        });
+
+        // });
     
         Ok(())
     }
+
+   
+    pub async fn recv_leader(self: Arc<Self>) -> std::io::Result<()> {
+        loop {
+            
+            let mut buf = vec![0u8; 1024];
+            let socket_server = self.socket_leader.clone();
+            println!("inside recv_leader");
+            match socket_server.recv_from(&mut buf).await {
+                Ok((len, addr)) => {
+                    let data = buf[..len].to_vec();
+                    let message = String::from_utf8_lossy(&data).to_string();
+                    println!("Updated leader status:");
+                    println!("LEADER Received '{}' from {}", message, addr);
+                    
+                    
+                        
+                        if let Some(id_str) = message.strip_prefix("Lead ") {
+                            if let Ok(id) = id_str.trim().parse::<u32>() {
+                                if id == self.id {
+                                    self.leader.store(true, Ordering::SeqCst);
+                                    println!("This server is now the leader.");
+                                    self.clone().client_send_leader().await.expect("Failed to send leader");
+
+                                } else {
+                                    self.leader.store(false, Ordering::SeqCst);
+                                }
+                                self.election.store(false, Ordering::SeqCst);
+                            }
+                        }
+                }
+                Err(e) => eprintln!("Failed to receive message: {}", e),
+                _ => {}
+            }
+        }
+    }
+
+    pub async fn recv_election(self: Arc<Self>) -> std::io::Result<()> {
+        let self_clone = Arc::clone(&self);
+        loop {
+            let mut buf = vec![0u8; 1024];
+            let socket_server = self_clone.socket_election.clone();
+            let db = self_clone.db.clone();
+    
+            println!("inside recv_election");
+    
+            match socket_server.recv_from(&mut buf).await {
+                Ok((len, addr)) => {
+                    let data = buf[..len].to_vec();
+                    let message = String::from_utf8_lossy(&data).to_string();
+                    println!("ELECTION Received '{}' from {}", message, addr);
+    
+                    // Parse the message and update the database.
+                    if let Some((key, value)) = message.split_once(":") {
+                        let key = key.trim();
+                        if let Ok(parsed_key) = key.parse::<u32>() {
+                            if let Ok(value) = value.trim().parse::<u32>() {
+                                {
+                                    // Lock the database only for the duration of the update.
+                                    let mut db_lock = db.lock();
+                                    db_lock.await.insert(parsed_key, value);
+                                }
+                                println!("Updated database with {}:{}", parsed_key, value);
+    
+                                // Determine if a new leader should be chosen.
+                                let self_clone = Arc::clone(&self_clone);
+                                if let Ok(Some(new_leader)) = self_clone.clone().choose_leader().await {
+                                    // Access the `id` field from `self` directly
+                                    if self_clone.clone().id == new_leader {
+                                        println!("This server is now the leader.");
+                                        
+                                        self_clone.leader.store(true, Ordering::SeqCst);
+                                        println!("Sending message: TO CLient");
+                                        // send back to the leader the ip address
+                                    } else {
+                                        self_clone.leader.store(false, Ordering::SeqCst);
+                                    }
+                                    self.election.store(false, Ordering::SeqCst);
+                                }
+                            } else {
+                                eprintln!("Failed to parse value from message: {}", message);
+                            }
+                        } else {
+                            eprintln!("Failed to parse key from message: {}", message);
+                        }
+                    } else {
+                        println!("ELECTION Received invalid message format from {}", addr);
+                    }
+                }
+                Err(e) => eprintln!("Failed to receive message: {}", e),
+            }
+        }
+    }
+
+    pub async fn choose_leader(self: Arc<Self>) -> std::io::Result<Option<u32>> {
+        let db = self.db.lock();
+        let mut min_key: Option<u32> = None;
+        let mut min_value: Option<u32> = None;
+
+        for (&key, &value) in db.await.iter() {
+            if min_value.is_none() || value < min_value.unwrap() {
+                min_value = Some(value);
+                min_key = Some(key);
+            }
+        }
+        
+        Ok(min_key) // Return the key with the lowest value or None if the map is empty
+    }
+    
+    pub async fn client_send_leader(self: Arc<Self>) -> std::io::Result<()> {
+        let socket_server = self.socket_client_send.clone();  // Get the socket for sending to clients
+        let interface_addr = self.interface_addr;              // Server's interface address
+        let port_server_recv = self.port_server_recv;          // Client's receiving port
+        let id = self.id;   
+        // read client address
+        let client_addr = self.client_address.clone();                                   // Server ID
+    
+        // Check if this server is the leader and the election is over
+        let leader = self.leader.load(Ordering::SeqCst);
+        let election = self.election.load(Ordering::SeqCst);
+    
+        let mut message = String::new();
+    
+        // If this server is the leader and election has finished, construct the message
+        if leader && !election {
+            message = format!("{}:{} is the new leader", interface_addr, port_server_recv);
+        } else {
+            println!("This server is not the leader, not sending any message to the client.");
+            return Ok(()); // Exit early if not the leader or election is ongoing
+        }
+    
+        println!("Sending message to client: {}", message);
+    
+        // Create the destination socket address using the interface address and port
+        let client_addr = *client_addr.lock().await;
+        let destination_addr = SocketAddr::new(client_addr.into(), port_server_recv);
+    
+        // Send the message to the client at the destination address
+        match socket_server.send_to(message.as_bytes(), &destination_addr).await {
+            Ok(_) => {
+                println!("Message sent successfully to {}", destination_addr);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("Failed to send message to client: {}", e);
+                Err(e)
+            }
+        }
+    }
     
 
-    
-
-    pub async fn send_rpc(&self) -> std::io::Result<()> {
+    pub async fn send_info(self: Arc<Self>) -> std::io::Result<()> {
         let socket_server = self.socket_server.clone();
         let multicast_addr = self.multicast_addr;
-        let port_server = self.port_server;
-
+        let port_server = self.port_election;
         let id = self.id;
-        let message = id.to_string();
 
-        tokio::spawn(async move {
-            middleware::send_rpc(socket_server.clone(), multicast_addr, port_server, message)
+        while self.election.load(Ordering::SeqCst) {
+            let mut sys = System::new_all();
+            sys.refresh_all(); // Refresh system information
+
+            // Get memory and CPU usage
+            let total_memory = sys.total_memory();
+            let used_memory = sys.used_memory();
+            let cpu_usage = sys.global_cpu_usage();
+
+            // Update shared CPU and memory usage
+            let cpu = cpu_usage as u32;
+            let mem = (used_memory as f32 / total_memory as f32 * 100.0) as u32;
+            let message = format!("{}:{}", id, cpu * mem);
+
+            println!("Sending message: {}", message);
+            middleware::send_message(socket_server.clone(), multicast_addr, port_server, message)
                 .await
                 .expect("Failed to send RPC");
+
             time::sleep(Duration::from_secs(1)).await;
-        });
+        }
         Ok(())
     }
-
-    
-
-
 
     // mainly port_server and port_client
     pub async fn load_env_vars(&self) -> (String, String) {
@@ -252,8 +357,9 @@ impl Server {
         client_addr: Arc<Mutex<Option<std::net::SocketAddr>>>,
     ) {
         
-        let socket_server = self.socket_server.clone();
-        let socket_client = self.socket_client.clone();
+        let socket_server = self.socket_server_recv.clone();
+        let socket_client = self.socket_client_send.clone();
+        let socket_server_leader = self.socket_server_leader.clone();
     
         tokio::spawn(async move {
             receive_image_data(socket_server, socket_client, image_data, client_addr)
@@ -267,42 +373,50 @@ impl Server {
         println!("Shutdown signal received.");
         Ok(())
     }
-
-
-
-
-    pub async fn recv_rpc(&self) {
-        loop{
+    //recieve "START" message from client in loop and check it
+    pub async fn recieve_start_elections(self:Arc<Self>) -> std::io::Result<()> {
+        let socket_server = self.socket_server_leader.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_server = self.port_election;
+        let id = self.id;
+        let self_clone = Arc::clone(&self);
+        println!("WAITING FOR START MESSAGE");
+        loop {
             let mut buf = vec![0u8; 1024];
-            let socket_server = self.socket_server.clone();
-            let (len, addr) = socket_server.recv_from(&mut buf).await.expect("Failed");
-            let data = buf[..len].to_vec();
-            let message = String::from_utf8(data).unwrap();
+            let self_clone = Arc::clone(&self_clone); 
+            match socket_server.recv_from(&mut buf).await {
+                Ok((len, addr)) => {
+                    
+                    let data = buf[..len].to_vec();
+                    let message = String::from_utf8_lossy(&data).to_string();
+                    println!("******************************************************************************************************************Received '{}' from {}", message, addr);
+                    let mut client_address_lock = self.client_address.lock().await;
+                    *client_address_lock = match addr.ip() {
+                        std::net::IpAddr::V4(ipv4) => ipv4,
+                        std::net::IpAddr::V6(_) => panic!("Expected an IPv4 address"),
+                    };
 
-            tokio::spawn(async move{
-
-                println!("Recieved message : {} from {}", message, addr);
-            });
+                    if message == "START" {
+                        self_clone.start_election().await.expect("Failed to start elections");
+                    }
+                }
+                Err(e) => eprintln!("Failed to receive message: {}", e),
+            }
         }
-        
     }
 
-    // pub async fn process_client(&self) -> std::io::Result<()> {
-    //     loop {
-    //         let db = self.db.clone();
-    //         let socket_client = self.socket_client.clone();
-    //         let mut buf = vec![0u8; 1024];
-    //         let (len, addr) = self.socket_client.recv_from(&mut buf).await.expect("Failed to receive from client socket");
-    //         let data = buf[..len].to_vec();
-    
-    //         tokio::spawn(async move {
-    //             middleware::process(socket_client, db, data, addr).await;
-    //         });
-    //     }
+    pub async fn start_election(self: Arc<Self>) -> std::io::Result<()> {
 
-    //     // Optionally add client processing logic here
-    // }
+        self.election.store(true, Ordering::SeqCst);
+        let elections = self.election.load(Ordering::SeqCst);
+        println!("Starting election... {} ", elections);
+       
+
+        Ok(())
+    }
+    
 }
+
 
 // encoding and decoding 
 pub fn server_encode_image(input_image: &str, encoded_image: &str, cover_image: &str) {
@@ -456,30 +570,4 @@ async fn receive_image_data(
         println!("**************************************************\n\n");
     }
 }
-
-// #[tokio::main]
-// async fn main() -> io::Result<()> {
-//     // let (port_server, port_client) = load_env_vars().await;
-//     // let (server_port_recv, server_port_send) = load_env_vars().await;
-//     let server_port_recv = "6372";
-//     let server_port_send = "6373";
-
-//     let server_ip = "127.0.0.1:".to_string();
-//     let server_address_recv = format!("{}{}", server_ip, server_port_recv);
-//     // 127.0.0.1:6372
-//     let server_address_send = format!("{}{}", server_ip, server_port_send);
-//     // 127.0.0.1:6373
-
-//     let _server_address_recv = bind_socket(&server_address_recv).await;
-//     let _server_address_send = bind_socket(&server_address_send).await;
-
-//     println!("Listening for UDP packets on {}", server_address_recv);
-
-//     let image_data = initialize_image_buffer();
-//     let client_addr = initialize_client_addr();
-    
-//     // middle ware function
-//     start_receive_task(_server_address_recv.clone(), _server_address_send.clone(), image_data.clone(), client_addr.clone()).await;
-//     wait_for_shutdown().await
-// }
 
