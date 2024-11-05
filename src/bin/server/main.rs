@@ -13,7 +13,7 @@ use std::sync::atomic::AtomicBool;
 async fn main() -> io::Result<()> {
 
      // Initialize the Server
-     let server = server::Server::new(3, false, Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)) ).await;
+     let server = server::Server::new(2, false, Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)) ).await;
 
      // Join multicast group
     let server = Arc::new(server);

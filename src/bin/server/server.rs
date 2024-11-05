@@ -15,7 +15,7 @@ use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::fs::File;
 use crate::middleware;
-use std::sync::{RwLock};
+use tokio::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::sync::Mutex as tokioMutex;
 use tokio::task;
@@ -311,31 +311,34 @@ impl Server {
     
 
     pub async fn send_info(self: Arc<Self>) -> std::io::Result<()> {
-        let socket_server = self.socket_server.clone();
-        let multicast_addr = self.multicast_addr;
-        let port_server = self.port_election;
-        let id = self.id;
+        let failed_lock = self.failed.read().await; // Lock the RwLock for reading
+        if *failed_lock == false{
+            let socket_server = self.socket_server.clone();
+            let multicast_addr = self.multicast_addr;
+            let port_server = self.port_election;
+            let id = self.id;
 
-        while self.election.load(Ordering::SeqCst) {
-            let mut sys = System::new_all();
-            sys.refresh_all(); // Refresh system information
+            while self.election.load(Ordering::SeqCst) {
+                let mut sys = System::new_all();
+                sys.refresh_all(); // Refresh system information
 
-            // Get memory and CPU usage
-            let total_memory = sys.total_memory();
-            let used_memory = sys.used_memory();
-            let cpu_usage = sys.global_cpu_usage();
+                // Get memory and CPU usage
+                let total_memory = sys.total_memory();
+                let used_memory = sys.used_memory();
+                let cpu_usage = sys.global_cpu_usage();
 
-            // Update shared CPU and memory usage
-            let cpu = cpu_usage as u32;
-            let mem = (used_memory as f32 / total_memory as f32 * 100.0) as u32;
-            let message = format!("{}:{}", id, cpu * mem);
+                // Update shared CPU and memory usage
+                let cpu = cpu_usage as u32;
+                let mem = (used_memory as f32 / total_memory as f32 * 100.0) as u32;
+                let message = format!("{}:{}", id, cpu * mem);
 
-            println!("Sending message: {}", message);
-            middleware::send_message(socket_server.clone(), multicast_addr, port_server, message)
-                .await
-                .expect("Failed to send RPC");
+                println!("Sending message: {}", message);
+                middleware::send_message(socket_server.clone(), multicast_addr, port_server, message)
+                    .await
+                    .expect("Failed to send RPC");
 
-            time::sleep(Duration::from_secs(1)).await;
+                time::sleep(Duration::from_secs(1)).await;
+            }
         }
         Ok(())
     }
@@ -451,7 +454,7 @@ impl Server {
         let election_socket = self.socket_bully.clone();
         let self_clone = self.clone();
         task::spawn(async move {
-            let msg = (self_clone.id, random_number, *self_clone.failed.read().unwrap());
+            let msg = (self_clone.id, random_number, *self_clone.failed.read().await);
             let msg_bytes = bincode::serialize(&msg).unwrap();
     
        
@@ -552,7 +555,7 @@ impl Server {
         }
 
         if let Some((max_id, _)) = max_host {
-            let mut failed = self.failed.write().unwrap();
+            let mut failed = self.failed.write().await;
             *failed = max_id == self.id;
             println!("Host {}: {}", self.id, if *failed { "failed" } else { "active" });
         }
@@ -632,7 +635,7 @@ impl Server {
         let mut max_host: Option<(u32, u32)> = None;
         if numbers.len() == 1 {
             let (id, number) = *numbers.iter().next().unwrap(); // Get the only host
-            let mut failed = self.failed.write().unwrap();
+            let mut failed = self.failed.write().await;
             *failed = false; // Set to active
             println!("Only one host detected: Host {} is active with number {}", id, number);
         } else {
@@ -650,7 +653,7 @@ impl Server {
             }
         
             if let Some((max_id, _)) = max_host {
-                let mut failed = self.failed.write().unwrap();
+                let mut failed = self.failed.write().await;
                 *failed = max_id == self.id;
                 println!("Host {}: {}", self.id, if *failed { "failed" } else { "active" });
             }
