@@ -55,6 +55,10 @@ async fn main() -> io::Result<()> {
     });
 
     let server_clone = server.clone();
+    tokio::task::spawn(async move {
+        server_clone.bully_listener().await;
+    });
+
 
     
     let server_a = server.clone();
