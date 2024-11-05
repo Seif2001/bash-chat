@@ -149,6 +149,10 @@ impl Server {
 
    
     pub async fn recv_leader(self: Arc<Self>) -> std::io::Result<()> {
+        let interface_addr = self.interface_addr;              // Server's interface address
+        let port_server_recv = self.port_server_recv;          // Client's receiving port
+
+
         loop {
             
             let mut buf = vec![0u8; 1024];
@@ -160,20 +164,21 @@ impl Server {
                     let message = String::from_utf8_lossy(&data).to_string();
                     println!("Updated leader status:");
                     println!("LEADER Received '{}' from {}", message, addr);
-                    
-                    
-                        
+        
                         if let Some(id_str) = message.strip_prefix("Lead ") {
+                            let mut message = String::new();
                             if let Ok(id) = id_str.trim().parse::<u32>() {
                                 if id == self.id {
+                                    message = format!("{}:{}", interface_addr, port_server_recv);
                                     self.leader.store(true, Ordering::SeqCst);
                                     println!("This server is now the leader.");
-                                    self.clone().client_send_leader().await.expect("Failed to send leader");
-
+                                    
                                 } else {
+                                    message = format!("{}:{}", addr.ip(), port_server_recv);
                                     self.leader.store(false, Ordering::SeqCst);
                                 }
                                 self.election.store(false, Ordering::SeqCst);
+                                self.clone().client_send_leader(message.clone()).await.expect("Failed to send leader");
                             }
                         }
                 }
@@ -185,6 +190,7 @@ impl Server {
 
     pub async fn recv_election(self: Arc<Self>) -> std::io::Result<()> {
         let self_clone = Arc::clone(&self);
+
         loop {
             let mut buf = vec![0u8; 1024];
             let socket_server = self_clone.socket_election.clone();
@@ -230,14 +236,15 @@ impl Server {
                                 eprintln!("Failed to parse value from message: {}", message);
                             }
                         }
-                        else if message == "start"{
-                            self_clone_2.start_election().await.expect("failed to start ekection");
-
-                        } 
+                        
                         else {
                             eprintln!("Failed to parse key from message: {}", message);
                         }
-                    } else {
+                    } else if message == "start"{
+                        self_clone_2.start_election().await.expect("failed to start ekection");
+
+                    } 
+                    else {
                         println!("ELECTION Received invalid message format from {}", addr);
                     }
                 }
@@ -261,10 +268,8 @@ impl Server {
         Ok(min_key) // Return the key with the lowest value or None if the map is empty
     }
     
-    pub async fn client_send_leader(self: Arc<Self>) -> std::io::Result<()> {
+    pub async fn client_send_leader(self: Arc<Self>, message: String) -> std::io::Result<()> {
         let socket_server = self.socket_client_send.clone();  // Get the socket for sending to clients
-        let interface_addr = self.interface_addr;              // Server's interface address
-        let port_server_recv = self.port_server_recv;          // Client's receiving port
         let id = self.id;   
         // read client address
         let client_addr = self.client_address.clone();                                   // Server ID
@@ -273,16 +278,10 @@ impl Server {
         let leader = self.leader.load(Ordering::SeqCst);
         let election = self.election.load(Ordering::SeqCst);
     
-        let mut message = String::new();
+       
+
     
-        // If this server is the leader and election has finished, construct the message
-        if leader && !election {
-            message = format!("{}:{}", interface_addr, port_server_recv);
-        } else {
-            println!("This server is not the leader, not sending any message to the client.");
-            return Ok(()); // Exit early if not the leader or election is ongoing
-        }
-    
+      
         println!("Sending message to client: {}", message);
     
         // Create the destination socket address using the interface address and port
@@ -429,7 +428,7 @@ impl Server {
         let multicast_addr = self.multicast_addr;
         let port_server = self.port_election;
         let id = self.id;
-        let message = "START".to_string();
+        let message = "start".to_string();
 
         match middleware::send_message(socket_leader.clone(), multicast_addr, port_server, message.clone()).await {
             Ok(_) => println!("Message sent successfully"),
