@@ -330,7 +330,7 @@ impl Server {
                 // Update shared CPU and memory usage
                 let cpu = cpu_usage as u32;
                 let mem = (used_memory as f32 / total_memory as f32 * 100.0) as u32;
-                let message = format!("{}:{}", id, cpu * mem);
+                let message = format!("{}:{}", id, cpu * mem*rand::thread_rng().gen_range(0..100));
 
                 println!("Sending message: {}", message);
                 middleware::send_message(socket_server.clone(), multicast_addr, port_server, message)
