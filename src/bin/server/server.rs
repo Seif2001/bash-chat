@@ -194,6 +194,7 @@ impl Server {
     
             match socket_server.recv_from(&mut buf).await {
                 Ok((len, addr)) => {
+                    let self_clone_2 = self_clone.clone();
                     let data = buf[..len].to_vec();
                     let message = String::from_utf8_lossy(&data).to_string();
                     println!("ELECTION Received '{}' from {}", message, addr);
@@ -223,12 +224,17 @@ impl Server {
                                     } else {
                                         self_clone.leader.store(false, Ordering::SeqCst);
                                     }
-                                    self.election.store(false, Ordering::SeqCst);
+                                    self_clone.election.store(false, Ordering::SeqCst);
                                 }
                             } else {
                                 eprintln!("Failed to parse value from message: {}", message);
                             }
-                        } else {
+                        }
+                        else if message == "start"{
+                            self_clone_2.start_election().await.expect("failed to start ekection");
+
+                        } 
+                        else {
                             eprintln!("Failed to parse key from message: {}", message);
                         }
                     } else {
@@ -374,13 +380,14 @@ impl Server {
         Ok(())
     }
     //recieve "START" message from client in loop and check it
-    pub async fn recieve_start_elections(self:Arc<Self>) -> std::io::Result<()> {
+    pub async fn recieve_start_elections_client(self:Arc<Self>) -> std::io::Result<()> {
         let socket_server = self.socket_server_leader.clone();
         let multicast_addr = self.multicast_addr;
         let port_server = self.port_election;
         let id = self.id;
         let self_clone = Arc::clone(&self);
         println!("WAITING FOR START MESSAGE");
+        
         loop {
             let mut buf = vec![0u8; 1024];
             let self_clone = Arc::clone(&self_clone); 
@@ -395,8 +402,9 @@ impl Server {
                         std::net::IpAddr::V4(ipv4) => ipv4,
                         std::net::IpAddr::V6(_) => panic!("Expected an IPv4 address"),
                     };
-
+                    let selfclone = self.clone();
                     if message == "START" {
+                        selfclone.send_election_multicast().await.expect("failed to multicast");
                         self_clone.start_election().await.expect("Failed to start elections");
                     }
                 }
@@ -411,6 +419,22 @@ impl Server {
         let elections = self.election.load(Ordering::SeqCst);
         println!("Starting election... {} ", elections);
        
+
+        Ok(())
+    }
+    pub async fn send_election_multicast(self: Arc<Self>) -> std::io::Result<()> {
+
+        print!("inside send_leader");
+        let socket_leader = self.socket_server.clone();
+        let multicast_addr = self.multicast_addr;
+        let port_server = self.port_election;
+        let id = self.id;
+        let message = "START".to_string();
+
+        match middleware::send_message(socket_leader.clone(), multicast_addr, port_server, message.clone()).await {
+            Ok(_) => println!("Message sent successfully"),
+            Err(e) => eprintln!("Failed to send RPC: {}", e),
+        }
 
         Ok(())
     }

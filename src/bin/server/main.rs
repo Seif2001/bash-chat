@@ -13,7 +13,7 @@ use std::sync::atomic::AtomicBool;
 async fn main() -> io::Result<()> {
 
      // Initialize the Server
-     let server = server::Server::new(3, false, Arc::new(AtomicBool::new(true)), Arc::new(AtomicBool::new(false)) ).await;
+     let server = server::Server::new(3, false, Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)) ).await;
 
      // Join multicast group
     let server = Arc::new(server);
@@ -38,7 +38,7 @@ async fn main() -> io::Result<()> {
     let server_clone = server.clone();
     let task_recv_start = tokio::spawn(async move{
         loop{
-            server_clone.clone().recieve_start_elections().await.expect("Failed to send message");
+            server_clone.clone().recieve_start_elections_client().await.expect("Failed to send message");
         }
     });
 
