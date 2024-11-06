@@ -45,11 +45,12 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
     let mut buf = [0u8; 1028];
     let mut expected_chunk_index = 0;
     let mut file: Option<File> = None;
+    let test_socket = UdpSocket::bind("0.0.0.0:9002")?;
 
     println!("Waiting to receive encoded image from server on socket: {}...", socket.local_addr()?);
 
     loop {
-        match socket.recv_from(&mut buf) {
+        match test_socket.recv_from(&mut buf) {
             Ok((len, server_addr)) => {
                 if len == 3 && &buf[..len] == b"END" {
                     println!("End of encoded image transmission received.");
