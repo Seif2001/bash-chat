@@ -220,15 +220,23 @@ fn main() -> io::Result<()> {
     let receive_socket = UdpSocket::bind(("0.0.0.0", receive_port))?;
 
     let server_addr = "10.7.57.111:6274";
-    let image_name = "image1.jpg";
-    let image_path = "./raw_images/";
+    loop{
+        //loop over all images and send them to the server
+        let image_path = "./raw_images/";
 
-    // Send image to the server using the send socket
-    send_image_to_leader(&send_socket, server_addr, &format!("{}{}", image_path, image_name))?;
-    //send_image_to_server(&send_socket, server_addr, &format!("{}{}", image_path, image_name))?;
+        for entry in read_dir(image_path)? {
+            let entry = entry?;
+            let path = entry.path();
 
-    // Listen for the encoded image data from the server using the receive socket
-    receive_encoded_image(&receive_socket)?;
+            if path.is_file() {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    send_image_to_leader(&send_socket, server_addr, &format!("{}{}", image_path, file_name))?;
+                    receive_encoded_image(&receive_socket)?;
+                }
+            }
+        }
+
+   }
 
     Ok(())
 }
