@@ -45,12 +45,11 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
     let mut buf = [0u8; 1028];
     let mut expected_chunk_index = 0;
     let mut file: Option<File> = None;
-    let test_socket = UdpSocket::bind("0.0.0.0:9002")?;
 
     println!("Waiting to receive encoded image from server on socket: {}...", socket.local_addr()?);
 
     loop {
-        match test_socket.recv_from(&mut buf) {
+        match socket.recv_from(&mut buf) {
             Ok((len, server_addr)) => {
                 if len == 3 && &buf[..len] == b"END" {
                     println!("End of encoded image transmission received.");
@@ -100,9 +99,10 @@ fn send_start_message(socket: &UdpSocket, server_addr: &str, message: &str) -> i
 fn receive_leader(socket: &UdpSocket) -> io::Result<String> {
     loop {
         let mut buf = [0u8; 1024]; // Buffer for receiving the string data
+        let test_socket = UdpSocket::bind("0.0.0.0:9002")?;
 
         // Try to receive data from the socket
-        match socket.recv_from(&mut buf) {
+        match test_socket.recv_from(&mut buf) {
             Ok((len, _)) => {
                 // Convert the received bytes to a string slice
                 if let Ok(message) = str::from_utf8(&buf[..len]) {
@@ -219,7 +219,7 @@ fn main() -> io::Result<()> {
     // Separate socket for receiving, bound to send_socket's port + 1
     let receive_socket = UdpSocket::bind(("0.0.0.0", receive_port))?;
 
-    let server_addr = "10.7.57.111:6274";
+    let server_addr = "10.7.19.117:6274";
     loop{
         //loop over all images and send them to the server
         let image_path = "./raw_images/";
