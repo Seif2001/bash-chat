@@ -26,6 +26,7 @@ use image_processor::decode_image;
 //     }
 // }
 
+
 fn decode_received_image() {
     let encoded_image_path = "client_received_encoded_image.png"; // Corrected file name
     let output_image_path = "decrypted_image.png";
