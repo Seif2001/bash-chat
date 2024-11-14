@@ -4,6 +4,8 @@ use std::net::{UdpSocket, Ipv4Addr, SocketAddr};
 use std::fs::{File, read_dir};
 use std::io::{self, Read, Write};
 use std::time::Duration;
+use std::thread;
+
 // use std::net::{Ipv4Addr};
 // use std::io;
 
@@ -175,6 +177,19 @@ fn send_image_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str)
 }
 
 
+
+// Separate thread to constantly listen for encoded images from the server
+// fn start_receiving_images(socket: UdpSocket) {
+//     thread::spawn(move || {
+//         loop {
+//             if let Err(e) = receive_encoded_image(&socket) {
+//                 eprintln!(" --  Error while receiving encoded image: {:?}", e);
+//             }
+//         }
+//     });
+// }
+
+
 // Function to create multiple clients with specified IP and port configuration
 fn create_clients(
     base_ip: Ipv4Addr,
@@ -211,6 +226,17 @@ fn create_clients(
         let awake_message = format!("Client {} is awake", client_order);
         send_socket.send_to(awake_message.as_bytes(), server_addr)?;
         println!("Client {} sent awake message to server at {}", client_order, server_addr);
+
+
+        // Start a background thread to listen for encoded images on the receive_socket
+        let receive_socket_clone = receive_socket.try_clone()?;
+        thread::spawn(move || {
+            loop {
+                if let Err(e) = receive_encoded_image(&receive_socket_clone) {
+                    eprintln!("Error while receiving encoded image for client {}: {:?}", client_order, e);
+                }
+            }
+        });
 
         clients.push((client_order, send_socket, receive_socket));
     }
@@ -273,7 +299,7 @@ fn send_images_from_to(
 
 
                 // Wait for acknowledgment from the server
-                receive_encoded_image(receive_socket)?;
+                // receive_encoded_image(receive_socket)?;
             }
         }
     }

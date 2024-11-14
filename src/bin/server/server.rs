@@ -842,6 +842,7 @@ async fn receive_image_data(
                 // println!("Server encoded image name: {:?}", server_encoded_image_name);
 
                 // Send the encoded image to `new_addr` using `server_socket_send`
+                
                 send_encoded_image(server_socket_send.clone(), client_addr_sending.clone(), server_encoded_image_name).await?;
                 println!("\nEncoded image sent to client.");
 
