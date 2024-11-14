@@ -11,10 +11,12 @@ pub struct Config{
     pub address_election_rx: String,
     pub address_failover_tx: String,
     pub address_failover_rx: String,
+    pub address_client: String,
     pub multicast_addr: Ipv4Addr,
     pub interface_addr: Ipv4Addr,
     pub port_election_tx: u16,
     pub port_election_rx: u16,
+    pub port_client: u16,
 
 }
 
@@ -28,7 +30,7 @@ impl Config {
         let port_bully_tx = env::var("PORT_BULLY_TX").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
         let port_bully_rx = env::var("PORT_BULLY_RX").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
        
-    
+        let port_client = env::var("PORT_CLIENT").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
 
 
         // Define server addresses
@@ -38,6 +40,7 @@ impl Config {
         let address_election_rx = format!("{}{}", server_ip, port_election_rx);
         let address_failover_tx = format!("{}{}", server_ip, port_bully_tx);
         let address_failover_rx = format!("{}{}", server_ip, port_bully_rx);
+        let address_client = format!("{}{}", server_ip, port_client);
 
         
 
@@ -46,6 +49,7 @@ impl Config {
         let interface_addr = Ipv4Addr::from_str(&env::var("INTERFACE_ADDRESS").expect("INTERFACE_ADDRESS not set")).expect("Invalid interface address");
 
         Config {
+            address_client,
             address_election_tx,
             address_election_rx,
             address_failover_tx,
@@ -54,31 +58,8 @@ impl Config {
             interface_addr,
             port_election_tx,
             port_election_rx,
+            port_client
         }
-    }
-    pub fn get_address_election_tx(&self) -> String{
-        self.address_election_tx.clone()
-    }
-    pub fn get_address_election_rx(&self) -> String{
-        self.address_election_rx.clone()
-    }
-    pub fn get_address_failover_tx(&self) -> String{
-        self.address_failover_tx.clone()
-    }
-    pub fn get_address_failover_rx(&self) -> String{
-        self.address_failover_rx.clone()
-    }
-    pub fn get_multicast_addr(&self) -> Ipv4Addr{
-        self.multicast_addr.clone()
-    }
-    pub fn get_interface_addr(&self) -> Ipv4Addr{
-        self.interface_addr.clone()
-    }
-    pub fn get_port_election_tx(&self) -> u16{
-        self.port_election_tx.clone()
-    }
-    pub fn get_port_election_rx(&self) -> u16{
-        self.port_election_rx.clone()
     }
     
 }

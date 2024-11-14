@@ -68,5 +68,31 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
     
 }
 
+pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socket: &Arc<Socket>, config: &Arc<Config>){
+    let mut start_election = false;
+    // check if recieved election from client
+    let socket_client = socket.socket_client.clone();
+    let servers = Arc::clone(&servers);
+    let socket = Arc::clone(socket);
+    let config = Arc::clone(config);
+    tokio::spawn(async move {
+        loop {
+            println!("Waiting for election message from client");
+            let (message, _) = com::recv(&socket_client).await.expect("Failed to receive message");
+            let message = message.trim();
+
+            if message == "START" {
+                println!("Received election message from client");
+                let servers_clone = Arc::clone(&servers);
+                let socket_clone = Arc::clone(&socket);
+                let config_clone = Arc::clone(&config);
+                elect_leader(servers_clone, my_id, &socket_clone, &config_clone).await.expect("Failed to elect leader");
+                
+            }   
+        }
+    });
+
+}
+
 
 
