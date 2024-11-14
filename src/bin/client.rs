@@ -81,10 +81,10 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
 fn receive_leader(socket: &UdpSocket) -> io::Result<String> {
     loop {
         let mut buf = [0u8; 1024]; // Buffer for receiving the string data
-        let test_socket = UdpSocket::bind("0.0.0.0:9002")?;
+        // let test_socket = UdpSocket::bind("0.0.0.0:9000")?;
 
         // Try to receive data from the socket
-        match test_socket.recv_from(&mut buf) {
+        match socket.recv_from(&mut buf) {
             Ok((len, _)) => {
                 // Convert the received bytes to a string slice
                 if let Ok(message) = str::from_utf8(&buf[..len]) {
@@ -160,76 +160,17 @@ fn send_image_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str)
     Ok(())
 }
 
-
-// Function to create multiple clients with specified IP and port configuration
-fn create_clients(
-    base_ip: Ipv4Addr,
-    send_port: u16,
-    receive_port: u16,
-    num_clients: u32,
-    server_addr: &str,
-) -> io::Result<Vec<(u32, UdpSocket, UdpSocket)>> {
-    let mut clients = Vec::new();
-
-    println!("\n**********************************************************");
-    println!("******************* Initializing Clients *****************");
-    
-    for client_order in 0..num_clients {
-        let client_ip = Ipv4Addr::new(
-            base_ip.octets()[0],
-            base_ip.octets()[1],
-            base_ip.octets()[2],
-            base_ip.octets()[3] + client_order as u8,
-        );
-
-        let send_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), send_port))?;
-        let receive_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), receive_port))?;
-
-        println!(
-            "Created Client {} --> IP: {} \n --  Sending on socket  : {} \n --  Receiving on socket: {}",
-            client_order,
-            client_ip,
-            send_socket.local_addr()?,
-            receive_socket.local_addr()?
-        );
-
-        // Send "I am awake" message to server
-        let awake_message = format!("Client {} is awake", client_order);
-        send_socket.send_to(awake_message.as_bytes(), server_addr)?;
-        println!("Client {} sent awake message to server at {}", client_order, server_addr);
-
-
-        // Start a background thread to listen for encoded images on the receive_socket
-        let receive_socket_clone = receive_socket.try_clone()?;
-        thread::spawn(move || {
-            loop {
-                if let Err(e) = receive_encoded_image(&receive_socket_clone) {
-                    eprintln!("Error while receiving encoded image for client {}: {:?}", client_order, e);
-                }
-            }
-        });
-
-        clients.push((client_order, send_socket, receive_socket));
-    }
-    
-    println!("-----------------------------End--------------------------");
-    println!("----------------------------------------------------------\n");
-    Ok(clients)
-}
-
-
-
-
-
-
 // Function to send images from a specified client to a target address
 fn send_images_from_to(
     image_path: &str,
     mut num_images: usize,
     client_order: u32,
     server_addr: &str,
-    send_socket: &UdpSocket,
-    receive_socket: &UdpSocket,
+    secondary_client_addresses: &[String],
+    client_server_send_socket: &UdpSocket,
+    client_server_receive_socket: &UdpSocket,
+    client_client_send_socket: &UdpSocket,
+    client_client_receive_socket: &UdpSocket,
 ) -> io::Result<()> {
 
     println!("\n******************************************************************************");
@@ -258,19 +199,20 @@ fn send_images_from_to(
                 println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
                 
                 // Send the "START" message directly to the server
-                send_socket.send_to(b"START", server_addr)?;
-                println!(" --  'START' message sent ");
+                client_server_send_socket.send_to(b"START", server_addr)?;
+                println!(" --  'START' message sent to {}", server_addr);
 
                 // Receive leader's address from the server
-                let leader_address = receive_leader(send_socket)?;
+                let leader_address = receive_leader(client_server_send_socket)?;
                 println!(" --  received leader address: {}", leader_address); // already inside the receive leader function
 
                 // Send the image to the server at the leader's address
-                send_image_to_server(send_socket, &leader_address, &format!("{}{}", image_path, file_name))?;
+                                    //     socket, server_addr, image_path
+                send_image_to_server(client_server_send_socket, &leader_address, &format!("{}{}", image_path, file_name))?;
 
 
                 // Wait for acknowledgment from the server
-                // receive_encoded_image(receive_socket)?;
+                receive_encoded_image(client_server_receive_socket)?;
             }
         }
     }
@@ -284,39 +226,150 @@ fn send_images_from_to(
 
 
 
+
+// Function to create multiple clients with specified IP and port configuration
+fn create_clients(
+    base_ip: Ipv4Addr,
+    client_server_send_port: u16,
+    client_server_receive_port: u16,
+    client_client_send_port: u16,
+    client_client_receive_port: u16,
+    num_clients: u32,
+    server_addr: &str,
+) -> io::Result<Vec<(u32, UdpSocket, UdpSocket, UdpSocket, UdpSocket)>> {
+    let mut clients = Vec::new();
+
+    println!("\n**********************************************************");
+    println!("******************* Initializing Clients *****************");
+    
+    for client_order in 0..num_clients {
+        let client_ip = Ipv4Addr::new(
+            base_ip.octets()[0],
+            base_ip.octets()[1],
+            base_ip.octets()[2],
+            base_ip.octets()[3] + client_order as u8,
+        );
+
+        let client_server_send_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_server_send_port))
+            .map_err(|e| io::Error::new(e.kind(), format!("Failed to bind client_server_send_socket to {}: {}", client_server_send_port, e)))?;
+        let client_server_receive_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_server_receive_port))
+            .map_err(|e| io::Error::new(e.kind(), format!("Failed to bind client_server_receive_socket to {}: {}", client_server_receive_port, e)))?;
+        let client_client_send_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_client_send_port))
+            .map_err(|e| io::Error::new(e.kind(), format!("Failed to bind client_client_send_socket to {}: {}", client_client_send_port, e)))?;
+        let client_client_receive_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_client_receive_port))
+            .map_err(|e| io::Error::new(e.kind(), format!("Failed to bind client_client_receive_socket to {}: {}", client_client_receive_port, e)))?;
+
+
+        
+        // let client_server_send_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_server_send_port))?;
+        // let client_server_receive_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_server_receive_port))?;
+        // let client_client_send_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_client_send_port))?;
+        // let client_client_receive_socket = UdpSocket::bind(SocketAddr::new(client_ip.into(), client_client_receive_port))?;
+
+
+        println!(
+            "Created Client {} --> IP: {} \n --  Sending to server on  : {} \n --  Receiving on : {} \n -- Sending to other clients on : {} \n -- Receiving on : {}",
+            client_order,
+            client_ip,
+            client_server_send_socket.local_addr()?,
+            client_server_receive_socket.local_addr()?,
+            client_client_send_socket.local_addr()?,
+            client_client_receive_socket.local_addr()?
+        );
+
+        // Send "I am awake" message to server
+        let awake_message = format!("Client {} is awake", client_order);
+        client_server_send_socket.send_to(awake_message.as_bytes(), server_addr)?;
+        println!("Client {} sent awake message to server at {}", client_order, server_addr);
+
+
+        // Start a background thread to listen for encoded images on the client_server_receive_socket: 9001
+        let client_server_receive_socket_clone = client_server_receive_socket.try_clone()?;
+        // println!("____________client_server_receive_socket_clone: {:?}", client_server_receive_socket_clone);
+        thread::spawn(move || {
+            loop {
+                if let Err(e) = receive_encoded_image(&client_server_receive_socket_clone) {
+                    eprintln!("Error while receiving encoded image for client {}: {:?}", client_order, e);
+                }
+            }
+        });
+
+        // Start another background thread to listen for messages on the client_client_receive_socket: 9003
+        let client_client_receive_socket_clone = client_client_receive_socket.try_clone()?;
+        // println!("_____________client_client_receive_socket_clone: {:?}", client_client_receive_socket_clone);
+        thread::spawn(move || {
+            loop {
+                if let Err(e) = receive_encoded_image(&client_client_receive_socket_clone) {
+                    eprintln!("Error while receiving message for client {} on client port: {:?}", client_order, e);
+                }
+            }
+        });
+
+        clients.push((  client_order, 
+                        client_server_send_socket, 
+                        client_server_receive_socket, 
+                        client_client_send_socket, 
+                        client_client_receive_socket));
+                        // 0, 9000, 9001, 9002, 9003
+                        // 1, 9000, 9001, 9002, 9003
+    }
+    
+    println!("-----------------------------End--------------------------");
+    println!("----------------------------------------------------------\n");
+    Ok(clients)
+}
+
+
+
+
+
+
+
+
 #[tokio::main] // Make main async with Tokio runtime
 async fn main() -> io::Result<()> {
-    let client_base_ip = Ipv4Addr::new(127, 0, 1, 1);
+    let client_base_ip = Ipv4Addr::new(127, 10, 10, 1);
     let client_server_send_port = 9000;
     let client_server_receive_port = 9001;
-    // let client_client_send_port = 9002;
-    // let client_client_receive_port = 9003;
+    let client_client_send_port = 9004;
+    let client_client_receive_port = 9005;
     let server_addr = "10.40.46.69:6274";
     let num_clients = 1;
+    // list of all other clients which should be sent images 
+    let secondary_client_addresses = vec![ "127.1.1.1:9003".to_string(),
+                                                        "127.1.1.2:9003".to_string(),
+                                                        "127.1.1.3:9003".to_string(),
+                                                            ];
 
-
-    // create a client address of 127.0.0.1
-    let secondary_client_addr = "127.0.0.1:9001";
+    
     // let client_addr = SocketAddr::new(secondary_client_ip.into(), client_server_send_port);
 
     // Initialize clients and send awake messages to the server
     let clients = create_clients( client_base_ip, 
                                                                     client_server_send_port, 
                                                                     client_server_receive_port, 
+                                                                    client_client_send_port,
+                                                                    client_client_receive_port,
                                                                     num_clients, 
                                                                     server_addr)?;
 
     // Decide which clients should send images
-    for (client_order, client_server_send_socket, client_server_receive_socket) in &clients {
-        if *client_order == 0 { // Only client number 0 sends images
-            let num_images_to_send = 3;
-            send_images_from_to("./raw_images/", 
-                                num_images_to_send, 
-                                *client_order, 
-                                // server_addr, 
-                                secondary_client_addr,
-                                client_server_send_socket, 
-                                client_server_receive_socket)?;
+    for (client_order, 
+        client_server_send_socket, client_server_receive_socket, 
+        client_client_send_socket, client_client_receive_socket) in &clients {
+
+            if *client_order == 0 { // Only client number 0 sends images
+                let num_images_to_send = 3;
+                send_images_from_to("./raw_images/", 
+                                    num_images_to_send,             // 
+                                    *client_order,                  // 
+                                    server_addr,                    // should be changeable to the leader address
+                                    &secondary_client_addresses,    // list of all other clients 
+                                    client_server_send_socket,      // 9000 
+                                    client_server_receive_socket,   // 9001
+                                    client_client_send_socket,      // 9002
+                                    client_client_receive_socket    // 9003
+                                )?; 
         }
     }
 
