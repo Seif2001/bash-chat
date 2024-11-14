@@ -1,7 +1,7 @@
 
 use core::str;
 use std::net::{UdpSocket, Ipv4Addr, SocketAddr};
-use std::fs::{File, read_dir};
+use std::fs::{File, read_dir, create_dir_all};
 use std::io::{self, Read, Write};
 use std::time::Duration;
 use std::thread;
@@ -14,9 +14,12 @@ use image_processor::decode_image;
 use serde_json::ser;
 
 
-fn decode_received_image() {
-    let encoded_image_path = "client_received_encoded_image.png"; // Corrected file name
-    let output_image_path = "decrypted_image.png";
+fn decode_received_image(encoded_image_path: &str) {
+    let decoded_dir = "./client_images/decoded_images";
+    create_dir_all(decoded_dir).expect("Failed to create decoded images directory");
+
+     // Define the output image path in the decoded images directory
+     let output_image_path = format!("{}/decoded_{}", decoded_dir, encoded_image_path.split('/').last().unwrap());
 
     println!(" ---> Decoding received image...");
 
@@ -34,7 +37,22 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
     let mut expected_chunk_index = 0;
     let mut file: Option<File> = None;
 
+    // Ensure the directory exists
+    let save_dir = "./client_images/encoded_images";
+    create_dir_all(save_dir)?;
+
     println!(" ---> Waiting to receive encoded image from server on socket: {}...", socket.local_addr()?);
+
+    // Step 1: Receive the image name
+    let (len, server_addr) = socket.recv_from(&mut buf)?;
+    let image_name = String::from_utf8_lossy(&buf[..len]).to_string();
+    println!("Received image name: {}", image_name);
+
+    // Acknowledge the image name
+    socket.send_to(b"NAME_ACK", server_addr)?;
+
+    // Construct the full path to save the image
+    let image_path = format!("{}/{}", save_dir, image_name);
 
     loop {
         match socket.recv_from(&mut buf) {
@@ -43,7 +61,7 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
                     // println!(" --- End of encoded image transmission received.");
                     if let Some(f) = file {
                         f.sync_all()?; // Ensure all data is written to disk
-                        println!(" --  Encoded image successfully saved as 'client_received_encoded_image.png'");
+                        println!(" --  Encoded image successfully saved as '{}'", image_path);
                     } else {
                         println!(" *** No data received.");
                     }
@@ -51,7 +69,7 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
                 }
 
                 if file.is_none() {
-                    file = Some(File::create("client_received_encoded_image.png")?);
+                    file = Some(File::create(&image_path)?);
                 }
 
                 let chunk_index = i32::from_be_bytes(buf[..4].try_into().unwrap());
@@ -73,7 +91,7 @@ fn receive_encoded_image(socket: &UdpSocket) -> io::Result<()> {
         }
     }
 
-    decode_received_image();
+    decode_received_image(&image_path);
     Ok(())
 }
 
@@ -108,8 +126,19 @@ fn receive_leader(socket: &UdpSocket) -> io::Result<String> {
 
 fn send_image_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str) -> io::Result<()> {
 
-    // fn send_message_to_server(socket: &UdpSocket, server_addr: &str, message: &str) -> io::Result<()> {
-    
+    // IMPLEMENT RECEIVING THE IMAGE NAME IN THE SERVER
+    // Extract the image name from the path
+    let image_name = match std::path::Path::new(image_path).file_name() {
+        Some(name) => name.to_str().unwrap_or("unknown_image"),
+        None => "unknown_image",
+    };
+    // Send the image name as a separate initial packet
+    println!(" ---> Sending image name: {}", image_name);
+    socket.send_to(image_name.as_bytes(), server_addr)?;    
+
+
+    // print the image path 
+    println!(" ++++++++++ --> Image path: {}", image_path);
 
     let mut file = File::open(image_path)?;
     let mut buffer = Vec::new();
@@ -292,7 +321,7 @@ async fn main() -> io::Result<()> {
     // let client_client_send_port = 9002;
     // let client_client_receive_port = 9003;
     let server_addr = "10.7.57.111:6274";
-    let num_clients = 3;
+    let num_clients = 1;
 
     // Initialize clients and send awake messages to the server
     let clients = create_clients( client_base_ip, 
@@ -305,7 +334,7 @@ async fn main() -> io::Result<()> {
     for (client_order, client_server_send_socket, client_server_receive_socket) in &clients {
         if *client_order == 0 { // Only client number 0 sends images
             let num_images_to_send = 3;
-            send_images_from_to("./raw_images/", 
+            send_images_from_to("./client_images/raw_images/", 
                                 num_images_to_send, 
                                 *client_order, 
                                 server_addr, 

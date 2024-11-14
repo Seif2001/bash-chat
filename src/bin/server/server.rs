@@ -14,6 +14,8 @@ use tokio::signal;
 use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::fs::File;
+use std::path::Path;
+use std::fs::create_dir_all;
 use crate::middleware;
 use tokio::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -794,32 +796,42 @@ async fn encode_and_send_image(
     image_data: Arc<Mutex<Vec<u8>>>,
     socket_send: Arc<UdpSocket>,
     client_addr: Arc<Mutex<Option<SocketAddr>>>,
+    image_name: &str,
 ) -> io::Result<()> {
     // Define file paths
-    let server_received_image_name = "server_received_image.png";
-    let server_encoded_image_name = "server_encoded_image.png";
-    let mask_image_name = "mask2.jpg";
-    let mask_image_path = "./masks/";
+    let raw_image_path = format!("./server_images/raw_images/{}", image_name);
+    let encoded_image_path = format!("./server_images/encoded_images/encoded_{}", image_name);
+    let mask_image_path = "./masks/mask2.jpg";
 
-    // Save received image to file
-    let mut file = File::create(server_received_image_name)?;
-    file.write_all(&image_data.lock().await)?;
+     // Step 1: Save the raw image data to a file
+    {
+        let image_data_locked = image_data.lock().await;
+        let mut file = File::create(&raw_image_path)?;
+        file.write_all(&image_data_locked)?;
+    }
+    println!("Saved received image as '{}'", raw_image_path);
 
-    // Perform encoding
+    // Step 2: Encode the image
     println!("Encoding the image...");
-    server_encode_image(
-        server_received_image_name,
-        server_encoded_image_name,
-        &format!("{}{}", mask_image_path, mask_image_name),
-    );
+    server_encode_image(&raw_image_path, &encoded_image_path, mask_image_path);
 
-    // Send the encoded image to the client
+
+    // Step 3: Send the encoded image to the client
     if let Some(client_addr) = *client_addr.lock().await {
-        send_encoded_image(socket_send, Arc::new(Mutex::new(Some(client_addr))), server_encoded_image_name).await?;
-        println!("\nEncoded image sent to client at {:?}", client_addr);
+        // Send the encoded image filename to the client
+        socket_send.send_to(image_name.as_bytes(), client_addr).await?;
+        
+        // Wait for acknowledgment from client
+        let mut ack_buf = [0u8; 8];
+        socket_send.recv_from(&mut ack_buf).await?;
+        
+        // Send the encoded image in chunks
+        send_encoded_image(socket_send, Arc::new(Mutex::new(Some(client_addr))), &encoded_image_path).await?;
+        println!("Encoded image sent to client at {:?}", client_addr);
     } else {
         eprintln!("No client address found for sending the encoded image");
     }
+
     Ok(())
 }
 
@@ -830,13 +842,29 @@ async fn receive_image_data(
     image_data: Arc<Mutex<Vec<u8>>>,
     client_addr_sending: Arc<Mutex<Option<SocketAddr>>>,
 ) -> io::Result<()> {
+    let raw_images_dir = "./server_images/raw_images";
+    create_dir_all(raw_images_dir).expect("Failed to create raw images directory");
+
     loop {
         let mut buf = vec![0u8; 1028]; // Buffer size
         let mut expected_chunk_index = 0;
+        let mut image_name = String::new();
 
         println!("\n\n**************************************************");
         println!("Waiting to receive new image...");
 
+        // Step 1: Receive the image name
+        let (len, addr) = server_socket_recv.recv_from(&mut buf).await?;
+        image_name = String::from_utf8_lossy(&buf[..len]).to_string();
+        println!("Received image name: {}", image_name);
+
+        // Acknowledge receipt of the image name
+        server_socket_recv.send_to(b"NAME_ACK", addr).await?;
+
+        // Full path to save the received image
+        let image_path = Path::new(raw_images_dir).join(&image_name);
+
+        // Step 2: Receive image chunks
         loop {
             // Receive packet from client
             let (len, addr) = server_socket_recv.recv_from(&mut buf).await.expect("Failed to receive data");
@@ -847,10 +875,16 @@ async fn receive_image_data(
             if len == 3 && &buf[..len] == b"END" {
                 println!("\nEnd of transmission received. Spawning encoding task...");
 
+                // Save the complete image data to a file
+                let mut file = File::create(&image_path)?;
+                file.write_all(&image_data.lock().await)?;
+                println!(" -- Image saved as {:?}", image_path);
+
                 // Spawn a separate task to encode and send the image
                 let image_data_clone = Arc::clone(&image_data);
                 let socket_send_clone = Arc::clone(&server_socket_send);
                 let client_addr_clone = Arc::clone(&client_addr_sending);
+                let image_name_clone = image_name.clone();
 
                 tokio::spawn(async move {
                     // Encode and send the image in a separate task
@@ -858,6 +892,7 @@ async fn receive_image_data(
                         image_data_clone,
                         socket_send_clone,
                         client_addr_clone,
+                        &image_name,
                     )
                     .await
                     {
