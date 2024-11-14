@@ -37,54 +37,37 @@ fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
     buffer
 }
 
-// pub fn decode_image(path_input: String, output_file: String) -> io::Result<()> {
-//     let encoded_image = file_as_image_buffer(path_input);
-//     println!("Encoded image dimensions: {}x{}", encoded_image.width(), encoded_image.height());
 
-//     let dec = Decoder::new(encoded_image);
-//     let out_buffer = dec.decode_alpha();
-//     println!("Decoded buffer size (bytes): {}", out_buffer.len());
-
-//     // Create and write directly to the output file
-//     let mut file = File::create(&output_file)?;
-//     file.write_all(&out_buffer)?; // Write the buffer directly without referencing the Result
-
-//     println!("Decoding complete. The file has been recovered to {}", output_file);
-//     Ok(())
-// }
-
-// Assume `file_as_image_buffer` and `Decoder` are from the `steganography` library
-// and handle the image loading and decoding process.
 
 pub fn decode_image(path_input: String, output_file: String) -> io::Result<()> {
     // Step 1: Ensure the encoded image file exists
     let encoded_image_path = Path::new(&path_input);
     if !encoded_image_path.exists() {
-        println!("Error: Encoded image file '{}' does not exist.", path_input);
+        println!(" *** Error: Encoded image file '{}' does not exist.", path_input);
         return Err(io::Error::new(io::ErrorKind::NotFound, "Encoded image file not found"));
     }
 
     // Step 2: Load the encoded image
     let encoded_image = file_as_image_buffer(path_input.clone());
     if encoded_image.width() == 0 || encoded_image.height() == 0 {
-        println!("Error: Encoded image appears to be empty or invalid.");
+        println!(" *** Error: Encoded image appears to be empty or invalid.");
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid encoded image"));
     }
-    println!("Encoded image dimensions: {}x{}", encoded_image.width(), encoded_image.height());
+    println!(" --  Encoded image dimensions: {}x{}", encoded_image.width(), encoded_image.height());
 
     // Step 3: Decode the hidden bytes from the alpha channel
     let dec = Decoder::new(encoded_image);
     let out_buffer = dec.decode_alpha();
     if out_buffer.is_empty() {
-        println!("Warning: Decoded buffer is empty, indicating an issue in decoding.");
+        println!(" *** Warning: Decoded buffer is empty, indicating an issue in decoding.");
         return Err(io::Error::new(io::ErrorKind::InvalidData, "Decoded buffer is empty"));
     }
-    println!("Decoded buffer size (bytes): {}", out_buffer.len());
+    println!(" --  Decoded buffer size (bytes): {}", out_buffer.len());
 
     // Step 4: Create and write the decoded data directly to the output file
     let mut file = File::create(&output_file)?;
     file.write_all(&out_buffer)?; // Write the buffer directly
-    println!("Decoding complete. The file has been saved to '{}'", output_file);
+    println!(" ---> Decoding complete. The file has been saved to '{}'", output_file);
 
     Ok(())
 }

@@ -473,7 +473,7 @@ impl Server {
         let port_bully = self.port_bully;
 
         let start_time = time::Instant::now();
-        let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
+        let timeout_duration = Duration::from_secs(1000); //dk if 5 is too much but probably not since we're simulating failure anyway
     
         println!("Host {} listening on {}", self.id, port_bully);
     
@@ -568,7 +568,7 @@ impl Server {
         let port_bully = self.port_bully;
 
         let start_time = time::Instant::now();
-        let timeout_duration = Duration::from_secs(5); //dk if 5 is too much but probably not since we're simulating failure anyway
+        let timeout_duration = Duration::from_secs(1000); //dk if 5 is too much but probably not since we're simulating failure anyway
     
         println!("Host {} listening on {}", self.id, port_bully);
     
@@ -666,7 +666,7 @@ impl Server {
         let socket = self.socket_bully.clone();
         let mut buf = [0u8; 1024];
 
-        let mut interval = time::interval(Duration::from_secs(5)); // Interval for running the bully algorithm
+        let mut interval = time::interval(Duration::from_secs(1000)); // Interval for running the bully algorithm
         let is_running = self.is_running.clone();
 
         loop {
@@ -759,7 +759,7 @@ pub async fn send_encoded_image(
 
         // Retry loop for sending each chunk
         let mut retries = 0;
-        const MAX_RETRIES: usize = 5;
+        const MAX_RETRIES: usize = 1000;
 
         loop {
             socket.send_to(&chunk, client_addr).await?;
