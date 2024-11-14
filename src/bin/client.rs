@@ -14,22 +14,6 @@ use image_processor::decode_image;
 use serde_json::ser;
 
 
-
-
-// fn decode_received_image() {
-//     let encoded_image_path = "received_encoded_image.png";
-//     let output_image_path = "decrypted_image.png";
-
-//     println!("Decoding received image...");
-
-//     // Call `decode_image` and handle success or failure
-//     match decode_image(encoded_image_path.to_string(), output_image_path.to_string()) {
-//         Ok(_) => println!("Image successfully decoded and saved as '{}'", output_image_path),
-//         Err(e) => println!("Failed to decode and save image: {:?}", e),
-//     }
-// }
-
-
 fn decode_received_image() {
     let encoded_image_path = "client_received_encoded_image.png"; // Corrected file name
     let output_image_path = "decrypted_image.png";
@@ -177,19 +161,6 @@ fn send_image_to_server(socket: &UdpSocket, server_addr: &str, image_path: &str)
 }
 
 
-
-// Separate thread to constantly listen for encoded images from the server
-// fn start_receiving_images(socket: UdpSocket) {
-//     thread::spawn(move || {
-//         loop {
-//             if let Err(e) = receive_encoded_image(&socket) {
-//                 eprintln!(" --  Error while receiving encoded image: {:?}", e);
-//             }
-//         }
-//     });
-// }
-
-
 // Function to create multiple clients with specified IP and port configuration
 fn create_clients(
     base_ip: Ipv4Addr,
@@ -313,8 +284,8 @@ fn send_images_from_to(
 
 
 
-
-fn main() -> io::Result<()> {
+#[tokio::main] // Make main async with Tokio runtime
+async fn main() -> io::Result<()> {
     let client_base_ip = Ipv4Addr::new(127, 0, 0, 1);
     let client_server_send_port = 9000;
     let client_server_receive_port = 9001;
@@ -342,6 +313,11 @@ fn main() -> io::Result<()> {
                                 client_server_receive_socket)?;
         }
     }
+
+
+    tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+    println!("\nCtrl+C detected. Shutting down...");
+
 
     Ok(())
 }

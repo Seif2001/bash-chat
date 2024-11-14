@@ -4,28 +4,14 @@ use std::net::{UdpSocket, Ipv4Addr, SocketAddr};
 use std::fs::{File, read_dir};
 use std::io::{self, Read, Write};
 use std::time::Duration;
+use std::thread;
+
 // use std::net::{Ipv4Addr};
 // use std::io;
 
 pub mod image_processor; // Add this if image_processor.rs is in the same directory
 use image_processor::decode_image;
 use serde_json::ser;
-
-
-
-
-// fn decode_received_image() {
-//     let encoded_image_path = "received_encoded_image.png";
-//     let output_image_path = "decrypted_image.png";
-
-//     println!("Decoding received image...");
-
-//     // Call `decode_image` and handle success or failure
-//     match decode_image(encoded_image_path.to_string(), output_image_path.to_string()) {
-//         Ok(_) => println!("Image successfully decoded and saved as '{}'", output_image_path),
-//         Err(e) => println!("Failed to decode and save image: {:?}", e),
-//     }
-// }
 
 
 fn decode_received_image() {
@@ -212,6 +198,17 @@ fn create_clients(
         send_socket.send_to(awake_message.as_bytes(), server_addr)?;
         println!("Client {} sent awake message to server at {}", client_order, server_addr);
 
+
+        // Start a background thread to listen for encoded images on the receive_socket
+        let receive_socket_clone = receive_socket.try_clone()?;
+        thread::spawn(move || {
+            loop {
+                if let Err(e) = receive_encoded_image(&receive_socket_clone) {
+                    eprintln!("Error while receiving encoded image for client {}: {:?}", client_order, e);
+                }
+            }
+        });
+
         clients.push((client_order, send_socket, receive_socket));
     }
     
@@ -273,7 +270,7 @@ fn send_images_from_to(
 
 
                 // Wait for acknowledgment from the server
-                receive_encoded_image(receive_socket)?;
+                // receive_encoded_image(receive_socket)?;
             }
         }
     }

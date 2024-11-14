@@ -789,94 +789,94 @@ pub async fn send_encoded_image(
 }
 
 
-// This function encodes the image and sends it back to the client
-async fn encode_and_send_image(
-    image_data: Arc<Mutex<Vec<u8>>>,
-    socket_send: Arc<UdpSocket>,
-    client_addr: Arc<Mutex<Option<SocketAddr>>>,
-) -> io::Result<()> {
-    // Define file paths
-    let server_received_image_name = "server_received_image.png";
-    let server_encoded_image_name = "server_encoded_image.png";
-    let mask_image_name = "mask2.jpg";
-    let mask_image_path = "./masks/";
-
-    // Save received image to file
-    let mut file = File::create(server_received_image_name)?;
-    file.write_all(&image_data.lock().await)?;
-
-    // Perform encoding
-    println!("Encoding the image...");
-    server_encode_image(
-        server_received_image_name,
-        server_encoded_image_name,
-        &format!("{}{}", mask_image_path, mask_image_name),
-    );
-
-    // Send the encoded image to the client
-    if let Some(client_addr) = *client_addr.lock().await {
-        send_encoded_image(socket_send, Arc::new(Mutex::new(Some(client_addr))), server_encoded_image_name).await?;
-        println!("\nEncoded image sent to client at {:?}", client_addr);
-    } else {
-        eprintln!("No client address found for sending the encoded image");
-    }
-    Ok(())
-}
-
-
 async fn receive_image_data(
     server_socket_recv: Arc<UdpSocket>,
     server_socket_send: Arc<UdpSocket>,
     image_data: Arc<Mutex<Vec<u8>>>,
-    client_addr_sending: Arc<Mutex<Option<SocketAddr>>>,
+    client_addr_sending: Arc<Mutex<Option<std::net::SocketAddr>>>,
 ) -> io::Result<()> {
     loop {
-        let mut buf = vec![0u8; 1028]; // Buffer size
+        let mut buf = vec![0u8; 1028]; // 4 bytes for index + 1024 bytes for data
         let mut expected_chunk_index = 0;
+        let mut total_chunks_received = 0;
 
         println!("\n\n**************************************************");
+        println!("**************************************************");
         println!("Waiting to receive new image...");
 
-        loop {
-            // Receive packet from client
-            let (len, addr) = server_socket_recv.recv_from(&mut buf).await.expect("Failed to receive data");
+        // Image file paths
+        let server_received_image_name = "server_received_image.png";
+        let server_encoded_image_name = "server_encoded_image.png";
+        let mask_image_name = "mask2.jpg";
+        let mask_image_path = "./masks/";
 
-            // Track client address for sending response
-            *client_addr_sending.lock().await = Some(SocketAddr::new(addr.ip(), addr.port() + 1));
+        loop {
+            // Receive a packet from the client
+            let (len, mut addr) = server_socket_recv.recv_from(&mut buf).await.expect("Failed to receive data");
+
+            // Create a new `SocketAddr` with the updated port (addr.port() + 2)
+            let new_addr = SocketAddr::new(addr.ip(), addr.port() + 1);
+            // println!("---- Client address for sending: {:?}", new_addr);
+
+            // Store modified client address for response
+            *client_addr_sending.lock().await = Some(new_addr);
 
             if len == 3 && &buf[..len] == b"END" {
-                println!("\nEnd of transmission received. Spawning encoding task...");
+                println!("\nEnd of transmission received. Saving and encoding file...");
 
-                // Spawn a separate task to encode and send the image
-                let image_data_clone = Arc::clone(&image_data);
-                let socket_send_clone = Arc::clone(&server_socket_send);
-                let client_addr_clone = Arc::clone(&client_addr_sending);
+                // Write accumulated image data to a file
+                let mut file = File::create(server_received_image_name)?;
+                file.write_all(&image_data.lock().await)?;
 
-                tokio::spawn(async move {
-                    // Encode and send the image in a separate task
-                    if let Err(e) = encode_and_send_image(
-                        image_data_clone,
-                        socket_send_clone,
-                        client_addr_clone,
-                    )
-                    .await
-                    {
-                        eprintln!("Error in encoding and sending image: {:?}", e);
-                    }
-                });
+                // Encode the image
+                server_encode_image(
+                    server_received_image_name,
+                    server_encoded_image_name,
+                    &format!("{}{}", mask_image_path, mask_image_name)
+                );
 
-                // Clear the image buffer for the next image
-                *image_data.lock().await = Vec::new(); 
+                // Log parameters for debugging before sending the encoded image
+                // println!("***************************************************");
+                // println!("Server socket send: {:?}", server_socket_send);
+                // println!("Client address for sending: {:?}", client_addr_sending);
+                // println!("Server encoded image name: {:?}", server_encoded_image_name);
+
+                // Send the encoded image to `new_addr` using `server_socket_send`
+                
+                send_encoded_image(server_socket_send.clone(), client_addr_sending.clone(), server_encoded_image_name).await?;
+                println!("\nEncoded image sent to client.");
+
+                // Clear image data for the next transmission
+                *image_data.lock().await = Vec::new(); // Clear the buffer
+                *client_addr_sending.lock().await = None; // Reset client address for new connection
                 break;
+
             } else {
-                // Handle chunk ordering and accumulation
                 let chunk_index = u32::from_be_bytes(buf[..4].try_into().unwrap());
+
+                // Only process the expected chunk index
                 if chunk_index == expected_chunk_index {
-                    image_data.lock().await.extend_from_slice(&buf[4..len]);
+                    let mut data = image_data.lock();
+                    data.await.extend_from_slice(&buf[4..len]);
+                    // print!("\rReceived chunk {}, expected chunk index: {}", chunk_index, expected_chunk_index);
+                    total_chunks_received += 1;
+
+                    // Send acknowledgment back to the client using the original port
                     server_socket_recv.send_to(&chunk_index.to_be_bytes(), addr).await?;
                     expected_chunk_index += 1;
+                } else {
+                    println!(
+                        "Out-of-order chunk received (expected {}, got {}). Ignoring.",
+                        expected_chunk_index, chunk_index
+                    );
                 }
             }
         }
+
+        // Log the total chunks received
+        println!("\nTotal chunks received from client: {}", total_chunks_received);
+        println!("**************************************************");
+        println!("**************************************************\n\n");
     }
 }
+
