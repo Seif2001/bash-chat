@@ -1,28 +1,41 @@
-mod server; // Include the server module
-mod middleware;
-use std::sync::{Arc, Mutex};
+
+mod leader;
+pub mod config;
+pub mod socket;
+pub mod com;
+use crate::leader::Node;
+use crate::config::Config;
+use crate::socket::Socket;
+
+use std::sync::{Arc};
+use tokio::sync::Mutex;
 
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
+    
+    
+    let servers: Arc<Mutex<std::collections::HashMap<u32, Node>>> = Arc::new(Mutex::new(
+        vec![
+            (0, Node{is_leader: false, is_failed: false}),
+            (1, Node{is_leader: false, is_failed: false}),
+            (2, Node{is_leader: true, is_failed: false}),
+        ].into_iter().collect()
+    ));
 
-    // Initialize the Server
-    let server = server::Server::new(1, false, 1).await;
+    let my_id = 0;
+    let config = Config::new();
 
-    // Join multicast group
-    let server = Arc::new(server);
-    server.clone().join().await.expect("Failed to join multicast group");
-
-    // Set up tasks for sending, receiving, and processing client messages
-    let recv_task = {
-        let server = server.clone();
-        tokio::spawn(async move {
-            server.recv_rpc().await;
-        })
-    };    //server.process_client().await.expect("Failed to setup client processing");
-    let _ = tokio::join!(recv_task);
-    server.clone().send_info().await.expect("Failed to setup RPC receiving");
+    let socket = Socket::new(config.address_election_tx, config.address_election_rx, config.address_failover_tx, config.address_failover_rx).await;
+    com::join(&socket.socket_election_tx, &socket.socket_failover_tx).await.expect("Failed to join multicast group");
+    let config = Config::new();
+    let _ = leader::recv_leader(&socket).await;
+    leader::elect_leader(servers, my_id, &socket, &config).await?;
+    // run tokio join for recieving leader messages
+    loop{
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
 
     Ok(())
 }
