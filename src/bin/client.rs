@@ -286,13 +286,18 @@ fn send_images_from_to(
 
 #[tokio::main] // Make main async with Tokio runtime
 async fn main() -> io::Result<()> {
-    let client_base_ip = Ipv4Addr::new(127, 0, 0, 1);
+    let client_base_ip = Ipv4Addr::new(127, 0, 1, 1);
     let client_server_send_port = 9000;
     let client_server_receive_port = 9001;
     // let client_client_send_port = 9002;
     // let client_client_receive_port = 9003;
-    let server_addr = "10.7.57.111:6274";
-    let num_clients = 3;
+    let server_addr = "10.40.46.69:6274";
+    let num_clients = 1;
+
+
+    // create a client address of 127.0.0.1
+    let secondary_client_addr = "127.0.0.1:9001";
+    // let client_addr = SocketAddr::new(secondary_client_ip.into(), client_server_send_port);
 
     // Initialize clients and send awake messages to the server
     let clients = create_clients( client_base_ip, 
@@ -308,7 +313,8 @@ async fn main() -> io::Result<()> {
             send_images_from_to("./raw_images/", 
                                 num_images_to_send, 
                                 *client_order, 
-                                server_addr, 
+                                // server_addr, 
+                                secondary_client_addr,
                                 client_server_send_socket, 
                                 client_server_receive_socket)?;
         }
