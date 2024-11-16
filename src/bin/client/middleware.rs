@@ -12,15 +12,15 @@ pub async fn send_cloud(socket: &Socket, config: &Config)  -> std::io::Result<()
     let message = "START";
 
     // Verify destination addresses before sending
-    println!("Sending message to server 1: {}:{}", config.server_ip_1, config.port_send);
-    println!("Sending message to server 2: {}:{}", config.server_ip_2, config.port_send);
-    println!("Sending message to server 3: {}:{}", config.server_ip_3, config.port_send);
+    println!("Sending message to server 1: {}:{}", config.server_ip_1, config.port_server_rx);
+    println!("Sending message to server 2: {}:{}", config.server_ip_2, config.port_server_rx);
+    println!("Sending message to server 3: {}:{}", config.server_ip_3, config.port_server_rx);
 
     // Task to send message to server 1
     let send_to_server_1 = {
         let socket_server_1_clone = socket_server_1.clone();
         let server_ip_1 = config.server_ip_1.clone();
-        let port_send_1 = config.port_send;
+        let port_send_1 = config.port_server_rx;
         tokio::spawn(async move {
             let dest = (server_ip_1, port_send_1);
             if let Err(e) = com::send(&socket_server_1_clone, message.to_string(), dest).await {
@@ -33,7 +33,7 @@ pub async fn send_cloud(socket: &Socket, config: &Config)  -> std::io::Result<()
     let send_to_server_2 = {
         let socket_server_2_clone = socket_server_2.clone();
         let server_ip_2 = config.server_ip_2.clone();
-        let port_send_2 = config.port_send;
+        let port_send_2 = config.port_server_rx;
         tokio::spawn(async move {
             let dest = (server_ip_2, port_send_2);
             if let Err(e) = com::send(&socket_server_2_clone, message.to_string(), dest).await {
@@ -46,7 +46,7 @@ pub async fn send_cloud(socket: &Socket, config: &Config)  -> std::io::Result<()
     let send_to_server_3 = {
         let socket_server_3_clone = socket_server_3.clone();
         let server_ip_3 = config.server_ip_3.clone();
-        let port_send_3 = config.port_send;
+        let port_send_3 = config.port_server_rx;
         tokio::spawn(async move {
             let dest = (server_ip_3, port_send_3);
             if let Err(e) = com::send(&socket_server_3_clone, message.to_string(), dest).await {
@@ -63,7 +63,8 @@ pub async fn send_cloud(socket: &Socket, config: &Config)  -> std::io::Result<()
 // receive leader message
 
 pub async fn recv_leader(socket: &Socket) -> std::io::Result<()> {
-    let socket = socket.socket_client_rx.clone();
+    let socket = socket.socket_client_leader_rx.clone();
+
     tokio::spawn(async move {
         loop {
             let (message, src) = com::recv(&socket).await.expect("Failed to receive message");

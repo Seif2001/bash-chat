@@ -117,7 +117,7 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
         println!("I am the leader");
         send_leader(servers, socket, leader_id, config).await;
         let socket = socket.clone();
-        send_leader_to_client(socket, client_addr, config.port_client_tx, leader_id).await;
+        send_leader_to_client(socket, client_addr, config.port_client_tx_leader, leader_id).await;
 
     }
     Ok(())
@@ -127,7 +127,8 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
 pub async fn send_leader_to_client(socket:&Socket, client_addr: Ipv4Addr, port: u16, leader_id: u32){
     let message = format!("{}:{}", "LEADER", leader_id);
     let dest = (client_addr, port);
-    let socket = socket.socket_client_tx.clone();
+    let socket = socket.socket_client_leader_tx.clone();
+    println!("Sending to clien at {}:{}", dest.0, dest.1);
     com::send(&socket,message, dest).await.expect("Failed to send leader to client");
 }
 
@@ -141,7 +142,7 @@ pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, sock
 
     // check if received election from client
     let mut term = 0;
-    let socket_client = socket.socket_client.clone();
+    let socket_client = socket.socket_client_elections_rx.clone();
     let servers = Arc::clone(&servers_clone);
     let socket = Arc::clone(&socket);
     let config = Arc::clone(config);
