@@ -11,27 +11,38 @@ use crate::com;
 
 
 
-pub async fn send_leader(socket: &Socket, leader_id: u32, config: &Config) {
-    let message = format!("lead {}", leader_id);
-    println!("Sending leader message: {}", message);
-    let dest = (config.multicast_addr, config.port_election_rx);    
+pub async fn send_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, socket: &Socket, leader_id: u32, config: &Config) {
+    // Lock the servers Mutex to access the HashMap
+    let db = servers.lock().await;
 
-    // Use the instance of Socket passed as a reference
-    let socket_election = socket.socket_election_tx.clone();
-    com::send(&socket_election, message, dest).await.expect("Failed to send leader message");
+    // Check if the leader_id exists in the HashMap
+    if let Some(node) = db.get(&leader_id) {
+        let term = node.term;  // Safely access the term of the leader
+
+        let message = format!("{} : {}", term, leader_id);
+        println!("Sending leader message: {}", message);
+
+        let dest = (config.multicast_addr, config.port_election_rx);    
+
+        // Use the instance of Socket passed as a reference
+        let socket_election = socket.socket_election_tx.clone();
+        com::send(&socket_election, message, dest).await.expect("Failed to send leader message");
+    } else {
+        println!("Leader ID {} not found in the servers map.", leader_id);
+    }
 }
 
 pub async fn recv_leader(socket: &Socket, servers: Arc<Mutex<HashMap<u32, Node>>>) {
-    let mut term: u32 = 0;
     let socket_election_rx = socket.socket_election_rx.clone();
     tokio::spawn(async move {
         loop {
             let (message, _) = com::recv(&socket_election_rx).await.expect("Failed to receive message");
             let message = message.trim();
-            if message.starts_with("lead") {
-                let leader_id = message.split_whitespace().nth(1).expect("Invalid message").parse::<u32>().expect("Invalid leader id");
-                println!("Received leader message from id {}: {}", leader_id, message);
-                set_leader(leader_id,  servers.clone(), term).await;
+            if let Some((term_str, leader_id_str)) = message.split_once(" : ") {
+                // Parse the term and leader_id from the message
+                let term = term_str.parse::<u32>().expect("Invalid term");
+                let leader_id = leader_id_str.parse::<u32>().expect("Invalid leader id");
+                set_leader(leader_id, servers.clone(), term).await;
             }
         }
     });
@@ -97,7 +108,7 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
     }
 
     if leader_id == my_id{
-        send_leader(socket, leader_id, config).await;
+        send_leader(servers, socket, leader_id, config).await;
     }
     Ok(())
     
