@@ -24,7 +24,7 @@ impl Config {
         let port_server_2 = env::var("PORT_SERVER_2").expect("PORT_SERVER_2 not set").parse::<u16>().expect("Invalid server port");
         let port_server_3 = env::var("PORT_SERVER_3").expect("PORT_SERVER_3 not set").parse::<u16>().expect("Invalid server port");
 
-        let server_ip = "127.0.0.1:";
+        let server_ip = "0.0.0.0:";
 
         let address_server_1 = format!("{}{}", server_ip, port_server_1);
         let address_server_2 = format!("{}{}", server_ip, port_server_2);
