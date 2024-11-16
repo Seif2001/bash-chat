@@ -34,7 +34,7 @@ async fn main() -> std::io::Result<()> {
     let config = Config::new();
     let config_arc = Arc::new(config); 
 
-    let _ = leader::recv_leader(&socket_arc, servers.clone()).await;
+    leader::recv_leader(&socket_arc, servers.clone()).await;
     let server_clone = servers.clone();
 
 

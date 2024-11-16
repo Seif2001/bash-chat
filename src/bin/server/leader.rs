@@ -33,6 +33,7 @@ pub async fn send_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, socket: &Socke
 }
 
 pub async fn recv_leader(socket: &Socket, servers: Arc<Mutex<HashMap<u32, Node>>>) {
+    println!("Waiting for leader message");
     let socket_election_rx = socket.socket_election_rx.clone();
     tokio::spawn(async move {
         loop {
@@ -42,6 +43,7 @@ pub async fn recv_leader(socket: &Socket, servers: Arc<Mutex<HashMap<u32, Node>>
                 // Parse the term and leader_id from the message
                 let term = term_str.parse::<u32>().expect("Invalid term");
                 let leader_id = leader_id_str.parse::<u32>().expect("Invalid leader id");
+                println!("Received leader message: {} : {}", term, leader_id);
                 set_leader(leader_id, servers.clone(), term).await;
             }
         }
@@ -101,6 +103,7 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
 
     while let Some(node) = servers.lock().await.get_mut(&leader_id) {
         leader_id = (leader_id+1) % 3;  // Increment the leader_id to check the next server
+        println!("Checking leader at id {}", leader_id);
         if !node.is_failed && node.term == term {
             println!("Found a leader at id {}: {:?}", leader_id, node);
             break;
@@ -114,12 +117,19 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
     
 }
 
-pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socket: &Arc<Socket>, config: &Arc<Config>){
-    // check if recieved election from client
+pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, socket: &Arc<Socket>, config: &Arc<Config>) {
+    // Start a task to receive leader messages
+    let socket_clone = Arc::clone(socket);
+    let servers_clone = Arc::clone(&servers);
+    tokio::spawn(async move {
+        recv_leader(&socket_clone, servers).await;
+    });
+
+    // check if received election from client
     let mut term = 0;
     let socket_client = socket.socket_client.clone();
-    let servers = Arc::clone(&servers);
-    let socket = Arc::clone(socket);
+    let servers = Arc::clone(&servers_clone);
+    let socket = Arc::clone(&socket);
     let config = Arc::clone(config);
     tokio::spawn(async move {
         loop {
@@ -134,12 +144,11 @@ pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socke
                 let config_clone = Arc::clone(&config);
                 elect_leader(servers_clone, my_id, &socket_clone, &config_clone, term).await.expect("Failed to elect leader");
                 term += 1;
-                
             }   
         }
     });
-
 }
+
 
 
 
