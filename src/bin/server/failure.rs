@@ -96,6 +96,17 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
             println!("Host {}: active", my_id);
         } else {
             println!("Host {}: failed", my_id);
+
+            let mut servers = servers.lock().await;
+
+            for node in servers.values_mut() {
+                node.is_failed = false;
+            }
+
+            if let Some(node) = servers.get_mut(&max_id) {
+                node.is_failed = true;
+                println!("Host {} is marked as failed", max_id);
+            }
         }
     }
 }
@@ -171,6 +182,17 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
             println!("Host {}: active", my_id);
         } else {
             println!("Host {}: failed", my_id);
+
+            let mut servers = servers.lock().await;
+
+            for node in servers.values_mut() {
+                node.is_failed = false;
+            }
+
+            if let Some(node) = servers.get_mut(&max_id) {
+                node.is_failed = true;
+                println!("Host {} is marked as failed", max_id);
+            }
         }
     }
 }
