@@ -1,12 +1,13 @@
-use mini_redis::server;
+use mini_redis::{client, server};
 use tokio::sync::Mutex;
 use tokio::net::UdpSocket;
 use tokio::task::Id;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::net::Ipv4Addr;
 
 use crate::config::{self, Config};
-use crate::socket::Socket;
+use crate::socket::{self, Socket};
 use crate::com;
 
 
@@ -85,11 +86,13 @@ pub async fn set_leader(leader_id: u32, servers: Arc<Mutex<HashMap<u32, Node>>>,
         node.current_leader = leader_id;
         node.term = term;
     }
+    println!("Updated servers map: {:?}", db);
+    drop(db);
 }
 
 
 
-pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socket: &Socket, config: &Config, term: u32)->std::io::Result<()>{
+pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socket: &Socket, config: &Config, term: u32, client_addr: Ipv4Addr)->std::io::Result<()>{
     let mut leader_id: u32 = my_id;
     let db = servers.lock().await;
 
@@ -104,17 +107,28 @@ pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, so
     while let Some(node) = servers.lock().await.get_mut(&leader_id) {
         leader_id = (leader_id+1) % 3;  // Increment the leader_id to check the next server
         println!("Checking leader at id {}", leader_id);
-        if !node.is_failed && node.term == term {
+        if !node.is_failed {
             println!("Found a leader at id {}: {:?}", leader_id, node);
             break;
         }
     }
 
     if leader_id == my_id{
+        println!("I am the leader");
         send_leader(servers, socket, leader_id, config).await;
+        let socket = socket.clone();
+        send_leader_to_client(socket, client_addr, config.port_client_tx, leader_id).await;
+
     }
     Ok(())
     
+}
+
+pub async fn send_leader_to_client(socket:&Socket, client_addr: Ipv4Addr, port: u16, leader_id: u32){
+    let message = format!("{}:{}", "LEADER", leader_id);
+    let dest = (client_addr, port);
+    let socket = socket.socket_client_tx.clone();
+    com::send(&socket,message, dest).await.expect("Failed to send leader to client");
 }
 
 pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, socket: &Arc<Socket>, config: &Arc<Config>) {
@@ -134,15 +148,18 @@ pub async fn elections(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, sock
     tokio::spawn(async move {
         loop {
             println!("Waiting for election message from client");
-            let (message, _) = com::recv(&socket_client).await.expect("Failed to receive message");
+            let (message, client_addr) = com::recv(&socket_client).await.expect("Failed to receive message");
             let message = message.trim();
-
+            let client_addr = match client_addr.ip() {
+                std::net::IpAddr::V4(addr) => addr,
+                _ => panic!("Expected an IPv4 address"),
+            };
             if message == "START" {
                 println!("Received election message from client");
                 let servers_clone = Arc::clone(&servers);
                 let socket_clone = Arc::clone(&socket);
                 let config_clone = Arc::clone(&config);
-                elect_leader(servers_clone, my_id, &socket_clone, &config_clone, term).await.expect("Failed to elect leader");
+                elect_leader(servers_clone, my_id, &socket_clone, &config_clone, term, client_addr).await.expect("Failed to elect leader");
                 term += 1;
             }   
         }

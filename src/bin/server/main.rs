@@ -19,22 +19,21 @@ async fn main() -> std::io::Result<()> {
     
     let servers: Arc<Mutex<std::collections::HashMap<u32, Node>>> = Arc::new(Mutex::new(
         vec![
-            (0, Node{is_leader: true, is_failed: false, current_leader: 0, term: 0}),
+            (0, Node{is_leader: false, is_failed: false, current_leader: 0, term: 0}),
             (1, Node{is_leader: false, is_failed: false, current_leader: 0, term: 0}),
-            (2,Node{is_leader: false, is_failed: false, current_leader: 0,  term: 0}),
+            (2,Node{is_leader: true, is_failed: false, current_leader: 0,  term: 0}),
         ].into_iter().collect()
     ));
 
     let my_id = 0;
     let config = Config::new();
 
-    let socket = Socket::new(config.address_election_tx, config.address_election_rx, config.address_failover_tx, config.address_failover_rx, config.address_client).await;
+    let socket = Socket::new(config.address_election_tx, config.address_election_rx, config.address_failover_tx, config.address_failover_rx, config.address_client, config.address_client_tx).await;
     let socket_arc = Arc::new(socket);
     com::join(&socket_arc.socket_election_tx, &socket_arc.socket_failover_tx).await.expect("Failed to join multicast group");
     let config = Config::new();
     let config_arc = Arc::new(config); 
 
-    leader::recv_leader(&socket_arc, servers.clone()).await;
     let server_clone = servers.clone();
 
 

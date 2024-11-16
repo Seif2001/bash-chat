@@ -18,6 +18,8 @@ pub struct Config{
     pub port_election_rx: u16,
     pub port_failover_tx: u16,
     pub port_client: u16,
+    pub port_client_tx: u16,
+    pub address_client_tx: String,
 
 }
 
@@ -32,6 +34,8 @@ impl Config {
         let port_bully_rx = env::var("PORT_BULLY_RX").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
        
         let port_client = env::var("PORT_CLIENT").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
+        let port_client_tx = env::var("PORT_CLIENT_TX").expect("PORT_CLIENT_TX not set").parse::<u16>().expect("Invalid client port");
+
 
 
 
@@ -44,6 +48,7 @@ impl Config {
         let address_failover_tx = format!("{}{}", server_ip, port_failover_tx);
         let address_failover_rx = format!("{}{}", server_ip, port_bully_rx);
         let address_client = format!("{}{}", server_ip, port_client);
+        let address_client_tx = format!("{}{}", server_ip, port_client_tx);
 
         
 
@@ -62,7 +67,9 @@ impl Config {
             port_election_tx,
             port_election_rx,
             port_failover_tx,
-            port_client
+            port_client,
+            port_client_tx,
+            address_client_tx,
         }
     }
     
