@@ -21,6 +21,7 @@ pub struct Config{
     pub port_client_tx: u16,
     pub address_client_leader_tx: String,
     pub port_client_tx_leader: u16,
+    pub address_server_rx: String,
 
 }
 
@@ -35,11 +36,13 @@ impl Config {
         let port_bully_rx = env::var("PORT_BULLY_RX").expect("PORT_BULLY not set").parse::<u16>().expect("Invalid bully port");
         let port_client_tx = env::var("PORT_CLIENT_TX").expect("PORT_CLIENT_TX not set").parse::<u16>().expect("Invalid client port");
 
-        let port_client_elections_rx = env::var("PORT_CLIENT_ELECTIONS").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
+        let port_client_elections_rx = env::var("PORT_CLIENT_ELECTIONS_RX").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
         let port_client_elections_tx = env::var("PORT_CLIENT_ELECTIONS_TX").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
 
         let port_client_leader_tx = env::var("PORT_CLIENT_LEADER_TX").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
         let port_client_tx_leader = env::var("PORT_CLIENT_TX_LEADER").expect("PORT_CLIENT not set").parse::<u16>().expect("Invalid client port");
+
+        let port_server_rx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
 
 
 
@@ -53,6 +56,7 @@ impl Config {
         let address_failover_rx = format!("{}{}", server_ip, port_bully_rx);
         let address_client_elections_rx = format!("{}{}", server_ip, port_client_elections_rx);
         let address_client_leader_tx = format!("{}{}", server_ip, port_client_leader_tx);
+        let address_server_rx = format!("{}{}", server_ip, port_server_rx);
 
         
 
@@ -75,6 +79,7 @@ impl Config {
             address_client_leader_tx,
             port_client_tx,
             port_client_tx_leader,
+            address_server_rx
         }
     }
     
