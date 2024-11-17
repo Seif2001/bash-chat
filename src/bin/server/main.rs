@@ -42,14 +42,14 @@ async fn main() -> std::io::Result<()> {
     image_com::recv_image(&socket_arc, &config_arc).await;
 
 // Spawn the bully listener task in a separate thread
-    // let listener_task = tokio::spawn({
-    //     let server_clone = server_clone.clone();
-    //     let socket_clone = socket_arc.clone(); // Clone the Arc
-    //     let config_clone = config_arc.clone(); // Clone the Arc
-    //     async move {
-    //         failure::bully_listener(server_clone, my_id, &socket_clone, &config_clone, Arc::new(Mutex::new(false))).await;
-    //     }
-    // });
+    let listener_task = tokio::spawn({
+        let server_clone = server_clone.clone();
+        let socket_clone = socket_arc.clone(); // Clone the Arc
+        let config_clone = config_arc.clone(); // Clone the Arc
+        async move {
+            failure::bully_listener(server_clone, my_id, &socket_clone, &config_clone, Arc::new(Mutex::new(false))).await;
+        }
+    });
     
 
     loop{

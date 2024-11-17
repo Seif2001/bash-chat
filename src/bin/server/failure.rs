@@ -179,20 +179,20 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
 
     if let Some((max_id, _)) = max_host {
         if max_id == my_id {
-            println!("Host {}: active", my_id);
-        } else {
             println!("Host {}: failed", my_id);
+        } else {
+            println!("Host {}: active", my_id);
 
-            let mut servers = servers.lock().await;
+        }
+        let mut servers = servers.lock().await;
 
-            for node in servers.values_mut() {
-                node.is_failed = false;
-            }
+        for node in servers.values_mut() {
+            node.is_failed = false;
+        }
 
-            if let Some(node) = servers.get_mut(&max_id) {
-                node.is_failed = true;
-                println!("Host {} is marked as failed", max_id);
-            }
+        if let Some(node) = servers.get_mut(&max_id) {
+            node.is_failed = true;
+            println!("Host {} is marked as failed", max_id);
         }
     }
 }
