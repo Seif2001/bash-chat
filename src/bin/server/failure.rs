@@ -29,7 +29,7 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
 
     let socket = socket_a.clone();
     let start_time = time::Instant::now();
-    let timeout_duration = Duration::from_secs(10);
+    let timeout_duration = Duration::from_secs(5);
 
     println!("Host {} initializing bully algorithm.", my_id);
 
@@ -43,7 +43,9 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
         let mut buf = [0u8; 1024];
         loop {
             let result = {
+
                 let listener = socket_listener.lock().await; // Lock the UdpSocket
+
                 timeout(timeout_duration, listener.recv_from(&mut buf)).await
             };
 
@@ -93,20 +95,20 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
 
     if let Some((max_id, _)) = max_host {
         if max_id == my_id {
-            println!("Host {}: active", my_id);
-        } else {
             println!("Host {}: failed", my_id);
+        } else {
+            println!("Host {}: active", my_id);
 
-            let mut servers = servers.lock().await;
+        }
+        let mut servers = servers.lock().await;
 
-            for node in servers.values_mut() {
-                node.is_failed = false;
-            }
+        for node in servers.values_mut() {
+            node.is_failed = false;
+        }
 
-            if let Some(node) = servers.get_mut(&max_id) {
-                node.is_failed = true;
-                println!("Host {} is marked as failed", max_id);
-            }
+        if let Some(node) = servers.get_mut(&max_id) {
+            node.is_failed = true;
+            println!("Host {} is marked as failed", max_id);
         }
     }
 }
@@ -117,7 +119,7 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
 
     let socket = socket_a.clone();
     let start_time = time::Instant::now();
-    let timeout_duration = Duration::from_secs(10);
+    let timeout_duration = Duration::from_secs(5);
 
     println!("Host {} initializing bully algorithm.", my_id);
 
@@ -203,26 +205,26 @@ pub async fn bully_listener( servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
     let failover_socket = Arc::clone(&socket_a.socket_failover_tx);
 
     let mut buf = [0u8; 1024];
-    let mut interval = tokio::time::interval(Duration::from_secs(1)); // Interval for periodic tasks
+    let mut interval = tokio::time::interval(Duration::from_secs(3)); // Interval for periodic tasks
 
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                let mut running = is_running.lock().await;
-                if !*running {
-                    *running = true; // Mark as running
-                    let is_running_clone = Arc::clone(&is_running);
-                    tokio::spawn({
-                        let servers_clone = Arc::clone(&servers);
-                        let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                        let config_clone = Arc::clone(&config);    // Clone Arc here
-                        async move {
-                            bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
-                            let mut running = is_running_clone.lock().await;
-                            *running = false; // Mark as not running
-                        }
-                    });
-                }
+                // let mut running = is_running.lock().await;
+                // if !*running {
+                //     *running = true; // Mark as running
+                //     let is_running_clone = Arc::clone(&is_running);
+                //     tokio::spawn({
+                //         let servers_clone = Arc::clone(&servers);
+                //         let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+                //         let config_clone = Arc::clone(&config);    // Clone Arc here
+                //         async move {
+                //             bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
+                //             let mut running = is_running_clone.lock().await;
+                //             *running = false; // Mark as not running
+                //         }
+                //     });
+                // }
             }
             result = async {
                 let binding = failover_socket.clone();
@@ -234,23 +236,11 @@ pub async fn bully_listener( servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
                         if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
                             if id as u32 != my_id {
                                 println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
-                                let mut running = is_running.lock().await;
-                                if !*running {
-                                    *running = true;
-                                    let is_running_clone = Arc::clone(&is_running);
-                                    tokio::spawn({
-                                        let servers_clone = Arc::clone(&servers);
-                                        let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                                        let config_clone = Arc::clone(&config);    // Clone Arc here
-                                        async move {
-                                            bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;
-                                            let mut running = is_running_clone.lock().await;
-                                            *running = false; // Mark as not running
-                                        }
-                                    });
-                                } else {
-                                    println!("Bully algorithm already running, skipping.");
-                                }
+                                let servers_clone = Arc::clone(&servers);
+                                let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+                                let config_clone = Arc::clone(&config);    // Clone Arc here
+                                bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
+                                
                             } else {
                                 println!("Received own message, skipping.");
                             }

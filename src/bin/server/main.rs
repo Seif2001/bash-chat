@@ -29,7 +29,7 @@ async fn main() -> std::io::Result<()> {
     let my_id = 0;
     let config = Config::new();
 
-    let socket = Socket::new(config.address_election_tx, config.address_election_rx, config.address_failover_tx, config.address_failover_rx, config.address_client_elections_rx, config.address_client_leader_tx, config.address_server_rx).await;
+    let socket = Socket::new(config).await;
     let socket_arc = Arc::new(socket);
     com::join(&socket_arc.socket_election_tx, &socket_arc.socket_failover_tx).await.expect("Failed to join multicast group");
     let config = Config::new();
@@ -39,17 +39,16 @@ async fn main() -> std::io::Result<()> {
 
 
     leader::elections(server_clone.clone(), my_id, &socket_arc, &config_arc).await;
-    image_com::recv_image(&socket_arc, &config_arc).await;
 
-// Spawn the bully listener task in a separate thread
-    // let listener_task = tokio::spawn({
-    //     let server_clone = server_clone.clone();
-    //     let socket_clone = socket_arc.clone(); // Clone the Arc
-    //     let config_clone = config_arc.clone(); // Clone the Arc
-    //     async move {
-    //         failure::bully_listener(server_clone, my_id, &socket_clone, &config_clone, Arc::new(Mutex::new(false))).await;
-    //     }
-    // });
+    // Spawn the bully listener task in a separate thread
+    let listener_task = tokio::spawn({
+        let server_clone = server_clone.clone();
+        let socket_clone = socket_arc.clone(); // Clone the Arc
+        let config_clone = config_arc.clone(); // Clone the Arc
+        async move {
+            failure::bully_listener(server_clone, my_id, &socket_clone, &config_clone, Arc::new(Mutex::new(false))).await;
+        }
+    });
     
 
     loop{
