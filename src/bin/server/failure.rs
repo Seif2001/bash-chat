@@ -206,7 +206,7 @@ pub async fn bully_listener( servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
 
     let mut buf = [0u8; 1024];
     let mut interval = tokio::time::interval(Duration::from_secs(3)); // Interval for periodic tasks
-
+    println!("Waiting for sim fail message");
     loop {
         tokio::select! {
             _ = interval.tick() => {

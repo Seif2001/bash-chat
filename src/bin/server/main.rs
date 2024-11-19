@@ -5,12 +5,15 @@ pub mod socket;
 pub mod com;
 pub mod image_com;
 pub mod failure;
+pub mod dos;
 use crate::leader::Node;
 use crate::config::Config;
 use crate::socket::Socket;
+use std::net::Ipv4Addr;
 
 use std::sync::{Arc};
 use tokio::sync::Mutex;
+use std::str::FromStr;
 
 
 #[tokio::main]
@@ -39,6 +42,11 @@ async fn main() -> std::io::Result<()> {
 
 
     leader::elections(server_clone.clone(), my_id, &socket_arc, &config_arc).await;
+    dos::dos_registrar(server_clone.clone(),my_id, &socket_arc, &config_arc).await;
+    dos::recv_dos(&socket_arc, &config_arc).await;
+    //let add: Ipv4Addr = Ipv4Addr::from_str("192.168.1.2").expect("Invalid IP address");
+    //dos::update_dos(add,"test123".to_string()).await;
+
 
     // Spawn the bully listener task in a separate thread
     let listener_task = tokio::spawn({

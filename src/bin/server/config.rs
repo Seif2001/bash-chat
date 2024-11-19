@@ -16,6 +16,8 @@ pub struct Config{
     pub port_election_tx: u16,
     pub port_election_rx: u16,
     pub port_failover_tx: u16,
+    pub port_client_dos_rx: u16,
+    pub port_server_dos_rx: u16,
     pub port_client_elections_tx: u16,
     pub address_client_elections_rx: String,
     pub port_client_tx: u16,
@@ -24,6 +26,8 @@ pub struct Config{
     pub address_server_client_rx: String,
     pub raw_images_dir: String,
     pub address_server_client_tx: String,
+    pub address_client_dos_rx: String,
+    pub address_server_dos_rx: String,
 
 }
 
@@ -47,6 +51,9 @@ impl Config {
         let port_server_client_rx = env::var("PORT_SERVER_CLIENT_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
         let port_server_client_tx = env::var("PORT_SERVER_CLIENT_TX").expect("PORT_SERVER_TX not set").parse::<u16>().expect("Invalid server port");
 
+        let port_client_dos_rx = env::var("PORT_CLIENT_DOS_RX").expect("PORT_CLIENT_DOS_RX not set").parse::<u16>().expect("Invalid server port");
+        let port_server_dos_rx = env::var("PORT_SERVER_DOS_RX").expect("PORT_SERVER_DOS_RX not set").parse::<u16>().expect("Invalid server port");
+
         let raw_images_dir = env::var("RAW_IMAGES_DIR").expect("RAW_IMAGES_DIR not set");
 
 
@@ -63,6 +70,10 @@ impl Config {
         let address_client_leader_tx = format!("{}{}", server_ip, port_client_leader_tx);
         let address_server_client_rx = format!("{}{}", server_ip, port_server_client_rx);
         let address_server_client_tx = format!("{}{}", server_ip, port_server_client_tx);
+        let address_client_dos_rx = format!("{}{}", server_ip, port_client_dos_rx);
+        let address_server_dos_rx = format!("{}{}", server_ip, port_server_dos_rx);
+
+
 
         
 
@@ -81,13 +92,17 @@ impl Config {
             port_election_tx,
             port_election_rx,
             port_failover_tx,
+            port_client_dos_rx,
+            port_server_dos_rx,
             port_client_elections_tx,
             address_client_leader_tx,
             port_client_tx,
             port_client_tx_leader,
             address_server_client_rx,
             raw_images_dir,
-            address_server_client_tx
+            address_server_client_tx,
+            address_client_dos_rx,
+            address_server_dos_rx
         }
     }
     

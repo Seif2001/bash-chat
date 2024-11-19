@@ -81,15 +81,15 @@ pub async fn recv_image_chunk(
 }
 
 
-pub async fn recv_name_chunk(socket: &Socket, config: &Config) -> (String, u32) {
+// pub async fn recv_name_chunk(socket: &Socket, config: &Config) -> (String, u32) {
     
-    loop{
-        let (image_path, client_ip) = recv_image_name(socket, config).await;
+//     loop{
+//         let (image_path, client_ip) = recv_image_name(socket, config).await;
         
-    }
+//     }
 
-    return 
-}
+//     return 
+// }
 
 // send image
 
