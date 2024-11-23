@@ -22,6 +22,7 @@ pub async fn join(socket_election_tx: &Arc<Mutex<UdpSocket>>, socket_failover_tx
 
 pub async fn send(socket: &Arc<Mutex<UdpSocket>>, message: String, dest: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
     let socket = socket.lock().await;
+    
     socket.send_to(message.as_bytes(), dest).await?;
 
 

@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, from_reader, to_writer};
 use std::io::Write;
 use std::io::Read;
-
-use crate::config::{self, Config};
+use tokio::time::{timeout, Duration};
+use crate::config::{Config};
 use crate::socket::{self, Socket};
 use crate::com;
 
@@ -35,7 +35,6 @@ pub async fn find_leader(servers: Arc<Mutex<HashMap<u32, Node>>>)->u32{
             leader_id = *key;
         }
     }
-    println!("current leader is {}", leader_id);
     drop(db); // Unlock the mutex before locking it again
 
     leader_id
@@ -49,8 +48,8 @@ pub async fn read_file(message: String) -> std::io::Result<()> {
 
     Ok(())
 }
-pub async fn send_ack( socket: &Socket, config:&Config) -> std::io::Result<()> {
-    let dest = (config.multicast_addr, config.port_server_dos_rx);    
+pub async fn send_ack( socket: &Socket, config: &Config, client_addr: Ipv4Addr) -> std::io::Result<()> {
+    let dest = (client_addr, config.port_client_dos_rx);    
     let socket = socket.socket_client_dos_rx.clone();
 
     com::send(&socket, "ACK".to_string(), dest).await
@@ -72,7 +71,9 @@ pub async fn send_dos( socket: &Socket, config:&Config) -> std::io::Result<()> {
     let dest = (config.multicast_addr, config.port_server_dos_rx);    
     let socket = socket.socket_server_dos_rx.clone();
 
+
     com::send(&socket, file_content, dest).await
+    
 }
 
 
@@ -135,7 +136,8 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
                     let socket_clone = Arc::clone(&socket);
                     let config_clone = Arc::clone(&config);
                     let _ = send_dos(&socket_clone,&config_clone).await;
-                    let _ = send_ack(&socket_clone, &config_clone).await;
+                    println!("Sent dos to other servers");
+                    let _ = send_ack(&socket_clone, &config_clone,client_addr).await;
                 }
             }   
         }
@@ -147,17 +149,27 @@ pub async fn recv_dos(socket: &Arc<Socket>, config: &Arc<Config>) {
 
     let server_ip: Ipv4Addr = config.interface_addr;
     let socket_dos_rx = socket.socket_server_dos_rx.clone();
-
+    
     tokio::spawn(async move {
         loop {
-            let (message, src) = com::recv(&socket_dos_rx).await.expect("Failed to receive message");
-            let message = message.trim();
-            if src.ip() == server_ip {
-                println!("Ignoring message from own IP: {}", src.ip());
-                continue;
-            }
-            if let Err(e) = read_file(message.to_string()).await {
-                eprintln!("Failed to process received file: {}", e);
+            let result = timeout( Duration::from_secs(1), com::recv(&socket_dos_rx)).await; //stop every once sec to release socket
+
+            match result {
+                Ok(Ok((message, src))) => {
+                    let message = message.trim();
+                    if src.ip() == server_ip {
+                        println!("Ignoring message from own IP: {}", src.ip());
+                        continue;
+                    }
+                    if let Err(e) = read_file(message.to_string()).await {
+                        eprintln!("Failed to process received file: {}", e);
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Failed to receive message: {}", e);
+                }
+                Err(_) => {
+                }
             }
         }
     });
