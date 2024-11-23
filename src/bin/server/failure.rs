@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use serde::{Serialize, Deserialize};
-use crate::leader::Node;
+use crate::leader::{elect_leader_dos, Node};
 use rand::Rng;
 use crate::config::{self, Config};
 use crate::socket::Socket;
@@ -24,7 +24,6 @@ pub async fn send_random(socket: &Socket, my_id: u32, config: &Config, random_nu
 
     com::send_vec(&socket_election, message, dest).await.expect("Failed to send leader message");
 }
-
 pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, socket_a: &Socket, config: &Config, info: (i32, u32)) {
 
     let socket = socket_a.clone();
@@ -43,9 +42,7 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
         let mut buf = [0u8; 1024];
         loop {
             let result = {
-
                 let listener = socket_listener.lock().await; // Lock the UdpSocket
-
                 timeout(timeout_duration, listener.recv_from(&mut buf)).await
             };
 
@@ -89,7 +86,13 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
             _ => break, // Break on timeout or error
         }
     }
-
+    if numbers.len() == 1 {        
+        let mut servers_clone = servers.lock().await;
+        for node in servers_clone.values_mut() {
+            node.is_failed = false;
+        }
+        return;
+    }
 
     let max_host = numbers.into_iter().max_by_key(|(_, number)| *number);
 
@@ -98,20 +101,24 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
             println!("Host {}: failed", my_id);
         } else {
             println!("Host {}: active", my_id);
-
         }
-        let mut servers = servers.lock().await;
 
-        for node in servers.values_mut() {
+        let mut servers_clone = servers.lock().await;
+
+        for node in servers_clone.values_mut() {
             node.is_failed = false;
         }
 
-        if let Some(node) = servers.get_mut(&max_id) {
+        if let Some(node) = servers_clone.get_mut(&max_id) {
+            if max_id == my_id && node.is_dos_leader {
+                let _ = elect_leader_dos(servers.clone(), my_id, &socket, config).await; // Pass the Arc<Mutex<HashMap>>
+            }
             node.is_failed = true;
             println!("Host {} is marked as failed", max_id);
         }
     }
 }
+
 
 
 
@@ -141,7 +148,10 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
                 Ok(Ok((size, addr))) => {
                     if let Ok((id, random_number)) = bincode::deserialize::<(u32, u32)>(&buf[..size]) {
                         println!("Received message from {}: (id: {}, random_number: {})", addr, id, random_number);
-                        let _ = listening_tx.send((id, random_number)); // Broadcast message
+                        if id != my_id{
+                            let _ = listening_tx.send((id, random_number)); // Broadcast message
+
+                        }
                     }
                 }
                 Ok(Err(e)) => {
@@ -175,24 +185,34 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
             _ => break, // Break on timeout or error
         }
     }
-
+    if numbers.len() == 1 {        
+        let mut servers_clone = servers.lock().await;
+        for node in servers_clone.values_mut() {
+            node.is_failed = false;
+        }
+        return;
+    }
 
     let max_host = numbers.into_iter().max_by_key(|(_, number)| *number);
 
+    
     if let Some((max_id, _)) = max_host {
         if max_id == my_id {
             println!("Host {}: failed", my_id);
         } else {
             println!("Host {}: active", my_id);
-
         }
-        let mut servers = servers.lock().await;
 
-        for node in servers.values_mut() {
+        let mut servers_clone = servers.lock().await;
+
+        for node in servers_clone.values_mut() {
             node.is_failed = false;
         }
 
-        if let Some(node) = servers.get_mut(&max_id) {
+        if let Some(node) = servers_clone.get_mut(&max_id) {
+            if max_id == my_id && node.is_dos_leader {
+                let _ = elect_leader_dos(servers.clone(), my_id, &socket, config).await; // Pass the Arc<Mutex<HashMap>>
+            }
             node.is_failed = true;
             println!("Host {} is marked as failed", max_id);
         }
@@ -205,52 +225,42 @@ pub async fn bully_listener( servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
     let failover_socket = Arc::clone(&socket_a.socket_failover_tx);
 
     let mut buf = [0u8; 1024];
-    let mut interval = tokio::time::interval(Duration::from_secs(3)); // Interval for periodic tasks
+    let mut interval = tokio::time::interval(Duration::from_secs(30)); // Interval for periodic tasks
     println!("Waiting for sim fail message");
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                // let mut running = is_running.lock().await;
-                // if !*running {
-                //     *running = true; // Mark as running
-                //     let is_running_clone = Arc::clone(&is_running);
-                //     tokio::spawn({
-                //         let servers_clone = Arc::clone(&servers);
-                //         let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                //         let config_clone = Arc::clone(&config);    // Clone Arc here
-                //         async move {
-                //             bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
-                //             let mut running = is_running_clone.lock().await;
-                //             *running = false; // Mark as not running
-                //         }
-                //     });
-                // }
-            }
-            result = async {
-                let binding = failover_socket.clone();
-                let socket = binding.lock().await;
-                socket.recv_from(&mut buf).await
-            } => {
-                match result {
-                    Ok((size, _)) => {
-                        if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
-                            if id as u32 != my_id {
-                                println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
-                                let servers_clone = Arc::clone(&servers);
-                                let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                                let config_clone = Arc::clone(&config);    // Clone Arc here
-                                bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
-                                
-                            } else {
-                                println!("Received own message, skipping.");
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Error receiving message: {:?}", e);
+                        let servers_clone = Arc::clone(&servers);
+                        let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+                        let config_clone = Arc::clone(&config);    // Clone Arc here
+                        bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
                     }
                 }
-            }
-        }
+            // result = async {
+            //     let binding = failover_socket.clone();
+            //     let socket = binding.lock().await;
+            //     socket.recv_from(&mut buf).await
+            // } => {
+            //     match result {
+            //         Ok((size, _)) => {
+            //             if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
+            //                 if id as u32 != my_id {
+            //                     println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
+            //                     let servers_clone = Arc::clone(&servers);
+            //                     let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+            //                     let config_clone = Arc::clone(&config);    // Clone Arc here
+            //                     bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
+                                
+            //                 } else {
+            //                     println!("Received own message, skipping.");
+            //                 }
+            //             }
+            //         },
+            //         Err(e) => {
+            //             eprintln!("Error receiving message: {:?}", e);
+            //         }
+            //     }
+            // }
+        //}
     }
 }
