@@ -256,7 +256,7 @@ pub async fn recv_leader_dos(socket: &Socket, servers: Arc<Mutex<HashMap<u32, No
                 let term = term_str.parse::<u32>().expect("Invalid term");
                 let leader_id = leader_id_str.parse::<u32>().expect("Invalid leader id");
                 println!("Received dos leader message: {} : {}", term, leader_id);
-                set_leader(leader_id, servers.clone(), term).await;
+                set_leader_dos(leader_id, servers.clone()).await;
             }
         }
     });
