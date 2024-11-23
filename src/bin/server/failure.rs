@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use serde::{Serialize, Deserialize};
-use crate::leader::Node;
+use crate::leader::{elect_leader_dos, Node};
 use rand::Rng;
 use crate::config::{self, Config};
 use crate::socket::Socket;
@@ -24,7 +24,6 @@ pub async fn send_random(socket: &Socket, my_id: u32, config: &Config, random_nu
 
     com::send_vec(&socket_election, message, dest).await.expect("Failed to send leader message");
 }
-
 pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, socket_a: &Socket, config: &Config, info: (i32, u32)) {
 
     let socket = socket_a.clone();
@@ -43,9 +42,7 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
         let mut buf = [0u8; 1024];
         loop {
             let result = {
-
                 let listener = socket_listener.lock().await; // Lock the UdpSocket
-
                 timeout(timeout_duration, listener.recv_from(&mut buf)).await
             };
 
@@ -90,7 +87,6 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
         }
     }
 
-
     let max_host = numbers.into_iter().max_by_key(|(_, number)| *number);
 
     if let Some((max_id, _)) = max_host {
@@ -98,20 +94,24 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
             println!("Host {}: failed", my_id);
         } else {
             println!("Host {}: active", my_id);
-
         }
-        let mut servers = servers.lock().await;
 
-        for node in servers.values_mut() {
+        let mut servers_clone = servers.lock().await;
+
+        for node in servers_clone.values_mut() {
             node.is_failed = false;
         }
 
-        if let Some(node) = servers.get_mut(&max_id) {
+        if let Some(node) = servers_clone.get_mut(&max_id) {
+            if max_id == my_id && node.is_dos_leader {
+                let _ = elect_leader_dos(servers.clone(), my_id, &socket, config).await; // Pass the Arc<Mutex<HashMap>>
+            }
             node.is_failed = true;
             println!("Host {} is marked as failed", max_id);
         }
     }
 }
+
 
 
 
@@ -179,20 +179,24 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
 
     let max_host = numbers.into_iter().max_by_key(|(_, number)| *number);
 
+    
     if let Some((max_id, _)) = max_host {
         if max_id == my_id {
             println!("Host {}: failed", my_id);
         } else {
             println!("Host {}: active", my_id);
-
         }
-        let mut servers = servers.lock().await;
 
-        for node in servers.values_mut() {
+        let mut servers_clone = servers.lock().await;
+
+        for node in servers_clone.values_mut() {
             node.is_failed = false;
         }
 
-        if let Some(node) = servers.get_mut(&max_id) {
+        if let Some(node) = servers_clone.get_mut(&max_id) {
+            if max_id == my_id && node.is_dos_leader {
+                let _ = elect_leader_dos(servers.clone(), my_id, &socket, config).await; // Pass the Arc<Mutex<HashMap>>
+            }
             node.is_failed = true;
             println!("Host {} is marked as failed", max_id);
         }

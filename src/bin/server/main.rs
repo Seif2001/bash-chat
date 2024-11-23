@@ -23,13 +23,13 @@ async fn main() -> std::io::Result<()> {
     
     let servers: Arc<Mutex<std::collections::HashMap<u32, Node>>> = Arc::new(Mutex::new(
         vec![
-            (0, Node{is_leader: true, is_failed: false, current_leader: 0, term: 0}),
-            (1, Node{is_leader: false, is_failed: false, current_leader: 0, term: 0}),
-            (2,Node{is_leader: false, is_failed: false, current_leader: 0,  term: 0}),
+            (0, Node{is_leader: true, is_dos_leader:true, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
+            (1, Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
+            (2,Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
         ].into_iter().collect()
     ));
 
-    let my_id = 0;
+    let my_id = 1;
     let config = Config::new();
 
     let socket = Socket::new(config).await;

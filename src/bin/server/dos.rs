@@ -2,7 +2,7 @@ use tokio::sync::Mutex;
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use crate::leader::{Node};
+use crate::leader::{self, Node};
 
 
 use std::fs::{File, OpenOptions};
@@ -114,6 +114,7 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
     let servers = Arc::clone(&servers_clone);
     let socket = Arc::clone(&socket);
     let config = Arc::clone(config);
+
     tokio::spawn(async move {
         loop {
             println!("Waiting for dos message from client");
