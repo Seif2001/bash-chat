@@ -13,7 +13,9 @@ pub struct Socket{
     pub socket_client_leader_tx: Arc<Mutex<UdpSocket>>,
     pub socket_server_client_rx: Arc<Mutex<UdpSocket>>,
     pub socket_server_client_tx: Arc<Mutex<UdpSocket>>,
+    pub socket_client_dos_tx: Arc<Mutex<UdpSocket>>,
     pub socket_client_dos_rx: Arc<Mutex<UdpSocket>>,
+
     pub socket_server_dos_rx: Arc<Mutex<UdpSocket>>
 
 }
@@ -32,7 +34,9 @@ impl Socket{
         let socket_client_leader_tx = Arc::new(Mutex::new(UdpSocket::bind(config.address_client_leader_tx).await.expect("Error binding")));
         let socket_server_client_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_server_client_rx).await.expect("Error binding")));
         let socket_server_client_tx = Arc::new(Mutex::new(UdpSocket::bind(config.address_server_client_tx).await.expect("Error binding")));
+        let socket_client_dos_tx = Arc::new(Mutex::new(UdpSocket::bind(config.address_client_dos_tx).await.expect("Error binding")));
         let socket_client_dos_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_client_dos_rx).await.expect("Error binding")));
+
         let socket_server_dos_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_server_dos_rx).await.expect("Error binding")));
 
 
@@ -47,6 +51,7 @@ impl Socket{
             socket_client_leader_tx,
             socket_server_client_rx,
             socket_server_client_tx,
+            socket_client_dos_tx,
             socket_client_dos_rx,
             socket_server_dos_rx
         }

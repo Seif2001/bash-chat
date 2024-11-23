@@ -13,11 +13,20 @@ pub struct Config{
     pub server_ip_1: Ipv4Addr,
     pub server_ip_2: Ipv4Addr,
     pub server_ip_3: Ipv4Addr,
+    pub port_client_dos_tx:u16,
+    pub port_client_dos_rx:u16,
+
+    pub address_client_dos_tx:String,
+    pub address_client_dos_rx:String,
+
     pub address_client_tx: String,
     pub port_client_elections_rx: u16,
     pub address_client_leader_rx: String,
     pub port_server_rx: u16,
+
     pub address_client_server_tx: String,
+
+    pub username: String,
 }
 
 impl Config {
@@ -33,6 +42,9 @@ impl Config {
         let port_client_tx = env::var("PORT_CLIENT_TX").expect("PORT_CLIENT_TX not set").parse::<u16>().expect("Invalid client port");
         let port_client_server_tx = env::var("PORT_CLIENT_SERVER_TX").expect("PORT_CLIENT_SERVER_TX not set").parse::<u16>().expect("Invalid client port");
         let port_server_rx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
+        let port_server_tx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
+
+        
 
         let server_ip = "0.0.0.0:";
 
@@ -43,9 +55,21 @@ impl Config {
         let address_client_tx = format!("{}{}", server_ip, port_client_tx);
         let address_client_server_tx = format!("{}{}", server_ip, port_client_server_tx);
 
+        let port_client_dos_tx = env::var("PORT_CLIENT_DOS_TX").expect("PORT_CLIENT_DOS_TX not set").parse::<u16>().expect("Invalid server port");
+        let port_client_dos_rx = env::var("PORT_CLIENT_DOS_RX").expect("PORT_CLIENT_DOS_RX not set").parse::<u16>().expect("Invalid server port");
+
+
+        let address_client_dos_tx = format!("{}{}", server_ip, port_client_dos_tx);
+        let address_client_dos_rx = format!("{}{}", server_ip, port_client_dos_rx);
+
+
+
         let server_ip_1 = env::var("SERVER_IP_1").expect("SERVER_IP_1 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
         let server_ip_2 = env::var("SERVER_IP_2").expect("SERVER_IP_2 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
         let server_ip_3 = env::var("SERVER_IP_3").expect("SERVER_IP_3 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
+
+        let username = env::var("USERNAME").expect("USERNAME not set").parse::<String>().expect("Invalid username");
+
 
 
 
@@ -56,11 +80,16 @@ impl Config {
             server_ip_1,
             server_ip_2,
             server_ip_3,
+            port_client_dos_tx,
+            port_client_dos_rx,
+            address_client_dos_tx,
+            address_client_dos_rx,
             address_client_tx,
             port_client_elections_rx,
             address_client_leader_rx,
             port_server_rx,
-            address_client_server_tx
+            address_client_server_tx,
+            username
 
 
         }

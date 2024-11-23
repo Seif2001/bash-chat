@@ -49,6 +49,13 @@ pub async fn read_file(message: String) -> std::io::Result<()> {
 
     Ok(())
 }
+pub async fn send_ack( socket: &Socket, config:&Config) -> std::io::Result<()> {
+    let dest = (config.multicast_addr, config.port_server_dos_rx);    
+    let socket = socket.socket_client_dos_rx.clone();
+
+    com::send(&socket, "ACK".to_string(), dest).await
+}
+
 pub async fn send_dos( socket: &Socket, config:&Config) -> std::io::Result<()> {
     let file_path = "clients.json";
     let file_content = match File::open(file_path) {
@@ -72,41 +79,37 @@ pub async fn send_dos( socket: &Socket, config:&Config) -> std::io::Result<()> {
 pub async fn update_dos(client_addr: Ipv4Addr, username: String) {
     let file_path = "clients.json";
 
-    //create a vector of clients using the json file or create a new vector if theres no json file
-    let clients = if let Ok(file) = File::open(file_path) {
+    // Create a vector of clients using the json file or create a new vector if there's no json file
+    let mut clients = if let Ok(file) = File::open(file_path) {
         let reader = BufReader::new(file);
         serde_json::from_reader(reader).unwrap_or_else(|_| Vec::<ClientInfo>::new())
     } else {
-        Vec::<ClientInfo>::new() 
+        Vec::<ClientInfo>::new()
     };
 
-    // Check if the username already exists
-    if clients.iter().any(|client| client.username == username) {
-        println!("Username '{}' already exists. No action taken.", username);
-        return;
+    if let Some(client) = clients.iter_mut().find(|client| client.username == username) {
+        client.ip = client_addr.to_string(); //if  exists update ip
+    } else { //other wise add and push
+        let next_id = clients.iter().map(|client| client.id).max().unwrap_or(0) + 1;
+
+        let new_client = ClientInfo {
+            id: next_id,
+            ip: client_addr.to_string(),
+            username,
+        };
+
+        clients.push(new_client);
     }
-    let next_id = clients.iter().map(|client| client.id).max().unwrap_or(0) + 1;
-
-    let new_client = ClientInfo {
-        id: next_id,
-        ip: client_addr.to_string(),
-        username,
-    };
-
-    let mut updated_clients = clients;
-    updated_clients.push(new_client);
 
     let file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path).expect("Unable to open or create the file");
     let writer = BufWriter::new(file);
 
-    serde_json::to_writer(writer, &updated_clients).expect("Failed to write to file");
-
-    println!("Client added successfully.");
+    serde_json::to_writer(writer, &clients).expect("Failed to write to file");
 }
 
 pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, socket: &Arc<Socket>, config: &Arc<Config>) {
     let servers_clone = Arc::clone(&servers);
-    let socket_client = socket.socket_client_dos_rx.clone();
+    let socket_client = socket.socket_client_dos_tx.clone();
     let servers = Arc::clone(&servers_clone);
     let socket = Arc::clone(&socket);
     let config = Arc::clone(config);
@@ -132,6 +135,7 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
                     let socket_clone = Arc::clone(&socket);
                     let config_clone = Arc::clone(&config);
                     let _ = send_dos(&socket_clone,&config_clone).await;
+                    let _ = send_ack(&socket_clone, &config_clone).await;
                 }
             }   
         }
