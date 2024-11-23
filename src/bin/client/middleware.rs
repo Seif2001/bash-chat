@@ -155,7 +155,7 @@ pub async fn recv_leader(socket: Socket, config: Config) -> std::io::Result<()> 
     Ok(())
 }
 
-pub async fn register_dos(socket: Socket, config: Config) -> std::io::Result<()> {
+pub async fn register_dos(socket: &Socket, config: &Config) -> std::io::Result<()> {
     let socket_client_dos_rx = socket.socket_client_dos_rx.clone(); // port on client
     let register_message = format!("REGISTER {}", config.username);  // Register to dos message
 

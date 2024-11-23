@@ -68,7 +68,7 @@ impl Config {
         let server_ip_2 = env::var("SERVER_IP_2").expect("SERVER_IP_2 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
         let server_ip_3 = env::var("SERVER_IP_3").expect("SERVER_IP_3 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
 
-        let username = env::var("USERNAME").expect("USERNAME not set").parse::<String>().expect("Invalid username");
+        let username = env::var("CLIENT_USERNAME").expect("CLIENT_USERNAME not set").parse::<String>().expect("Invalid username");
 
 
 
