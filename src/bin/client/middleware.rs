@@ -198,3 +198,67 @@ pub async fn register_dos(socket: &Socket, config: &Config) -> std::io::Result<(
 
     Ok(())
 }
+
+//P2P Communication
+// Function for sending an "image Request" to Client 2
+pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
+    let socket_client_tx = &socket.socket_client_tx;
+    let message = "image Requestttttt";
+
+    println!("Sending 'image Request' to client at {}:{}", client_address.0, client_address.1);
+
+    com::send(socket_client_tx, message.to_string(), client_address).await
+}
+
+// Function for receiving an "image Request" and responding with "Sample Images"
+pub async fn p2p_recv_image_request(socket: &Socket) -> std::io::Result<()> {
+    let socket_client_leader_rx = &socket.socket_client_leader_rx;
+
+    let (message, src) = com::recv(socket_client_leader_rx).await?;
+    let message = message.trim();
+
+    if message == "image Requestttttt" {
+        println!("Received 'image Request' from {}", src);
+        let response = "Sample Images";
+        println!("Responding with 'Sample Images' to {}", src);
+        if let std::net::IpAddr::V4(ipv4_src) = src.ip(){
+            com::send(socket_client_leader_rx, response.to_string(), (ipv4_src, src.port())).await?;
+        }
+        else{
+            eprintln!("Received non-IPv4 address: {}", src)
+        }
+    }
+
+    Ok(())
+}
+
+// Function for sending an image name from Client 1 to Client 2
+pub async fn p2p_send_image_name(socket: &Socket, client_address: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
+    let socket_client_tx = &socket.socket_client_tx;
+    let image_name = "Image Nameeeeee";
+
+    println!("Sending image name '{}' to client at {}:{}", image_name, client_address.0, client_address.1);
+
+    com::send(socket_client_tx, image_name.to_string(), client_address).await
+}
+
+// Function for receiving an image name and responding with confirmation
+pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
+    let socket_client_leader_rx = &socket.socket_client_leader_rx;
+
+    let (message, src) = com::recv(socket_client_leader_rx).await?;
+    let message = message.trim();
+
+    if message == "Image Nameeeeee" {
+        println!("Received image name '{}' from {}", message, src);
+        println!("Echoing back image name '{}' to {}", message, src);
+        if let std::net::IpAddr::V4(ipv4_src) = src.ip(){
+            com::send(socket_client_leader_rx, message.to_string(), (ipv4_src, src.port())).await?;
+        }
+        else{
+            eprintln!("Received non-IPv4 address: {}", src)
+        }
+    }
+
+    Ok(())
+}
