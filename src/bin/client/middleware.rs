@@ -212,9 +212,10 @@ pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::
 
 // Function for receiving an "image Request" and responding with "Sample Images"
 pub async fn p2p_recv_image_request(socket: &Socket) -> std::io::Result<()> {
-    let socket_client_leader_rx = &socket.socket_client_leader_rx;
+    let client_rx = &socket.socket_client_rx;
+    let socket_client_tx = &socket.socket_client_tx;
 
-    let (message, src) = com::recv(socket_client_leader_rx).await?;
+    let (message, src) = com::recv(client_rx).await?;
     let message = message.trim();
 
     if message == "image Requestttttt" {
@@ -222,11 +223,14 @@ pub async fn p2p_recv_image_request(socket: &Socket) -> std::io::Result<()> {
         let response = "Sample Images";
         println!("Responding with 'Sample Images' to {}", src);
         if let std::net::IpAddr::V4(ipv4_src) = src.ip(){
-            com::send(socket_client_leader_rx, response.to_string(), (ipv4_src, src.port())).await?;
+            com::send(socket_client_tx, response.to_string(), (ipv4_src, src.port())).await?;
         }
         else{
             eprintln!("Received non-IPv4 address: {}", src)
         }
+    }
+    else{
+        println!("Received '{} from {}", message, src);
     }
 
     Ok(())
