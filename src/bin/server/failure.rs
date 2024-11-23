@@ -86,6 +86,13 @@ pub async fn bully_algorithm(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
             _ => break, // Break on timeout or error
         }
     }
+    if numbers.len() == 1 {        
+        let mut servers_clone = servers.lock().await;
+        for node in servers_clone.values_mut() {
+            node.is_failed = false;
+        }
+        return;
+    }
 
     let max_host = numbers.into_iter().max_by_key(|(_, number)| *number);
 
@@ -141,7 +148,10 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
                 Ok(Ok((size, addr))) => {
                     if let Ok((id, random_number)) = bincode::deserialize::<(u32, u32)>(&buf[..size]) {
                         println!("Received message from {}: (id: {}, random_number: {})", addr, id, random_number);
-                        let _ = listening_tx.send((id, random_number)); // Broadcast message
+                        if id != my_id{
+                            let _ = listening_tx.send((id, random_number)); // Broadcast message
+
+                        }
                     }
                 }
                 Ok(Err(e)) => {
@@ -175,7 +185,13 @@ pub async fn bully_algorithm_init(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id
             _ => break, // Break on timeout or error
         }
     }
-
+    if numbers.len() == 1 {        
+        let mut servers_clone = servers.lock().await;
+        for node in servers_clone.values_mut() {
+            node.is_failed = false;
+        }
+        return;
+    }
 
     let max_host = numbers.into_iter().max_by_key(|(_, number)| *number);
 
@@ -209,52 +225,42 @@ pub async fn bully_listener( servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
     let failover_socket = Arc::clone(&socket_a.socket_failover_tx);
 
     let mut buf = [0u8; 1024];
-    let mut interval = tokio::time::interval(Duration::from_secs(3)); // Interval for periodic tasks
+    let mut interval = tokio::time::interval(Duration::from_secs(30)); // Interval for periodic tasks
     println!("Waiting for sim fail message");
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                // let mut running = is_running.lock().await;
-                // if !*running {
-                //     *running = true; // Mark as running
-                //     let is_running_clone = Arc::clone(&is_running);
-                //     tokio::spawn({
-                //         let servers_clone = Arc::clone(&servers);
-                //         let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                //         let config_clone = Arc::clone(&config);    // Clone Arc here
-                //         async move {
-                //             bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
-                //             let mut running = is_running_clone.lock().await;
-                //             *running = false; // Mark as not running
-                //         }
-                //     });
-                // }
-            }
-            result = async {
-                let binding = failover_socket.clone();
-                let socket = binding.lock().await;
-                socket.recv_from(&mut buf).await
-            } => {
-                match result {
-                    Ok((size, _)) => {
-                        if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
-                            if id as u32 != my_id {
-                                println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
-                                let servers_clone = Arc::clone(&servers);
-                                let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                                let config_clone = Arc::clone(&config);    // Clone Arc here
-                                bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
-                                
-                            } else {
-                                println!("Received own message, skipping.");
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Error receiving message: {:?}", e);
+                        let servers_clone = Arc::clone(&servers);
+                        let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+                        let config_clone = Arc::clone(&config);    // Clone Arc here
+                        bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
                     }
                 }
-            }
-        }
+            // result = async {
+            //     let binding = failover_socket.clone();
+            //     let socket = binding.lock().await;
+            //     socket.recv_from(&mut buf).await
+            // } => {
+            //     match result {
+            //         Ok((size, _)) => {
+            //             if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
+            //                 if id as u32 != my_id {
+            //                     println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
+            //                     let servers_clone = Arc::clone(&servers);
+            //                     let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+            //                     let config_clone = Arc::clone(&config);    // Clone Arc here
+            //                     bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
+                                
+            //                 } else {
+            //                     println!("Received own message, skipping.");
+            //                 }
+            //             }
+            //         },
+            //         Err(e) => {
+            //             eprintln!("Error receiving message: {:?}", e);
+            //         }
+            //     }
+            // }
+        //}
     }
 }
