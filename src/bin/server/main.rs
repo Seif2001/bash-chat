@@ -29,7 +29,7 @@ async fn main() -> std::io::Result<()> {
         ].into_iter().collect()
     ));
 
-    let my_id = 1;
+    let my_id = 0;
     let config = Config::new();
 
     let socket = Socket::new(config).await;
