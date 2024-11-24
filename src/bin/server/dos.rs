@@ -76,6 +76,25 @@ pub async fn send_dos( socket: &Socket, config:&Config) -> std::io::Result<()> {
     
 }
 
+pub async fn send_dos_client( socket: &Socket, config: &Config, client_addr: Ipv4Addr) -> std::io::Result<()> {
+    let file_path = "clients.json";
+    let file_content = match File::open(file_path) {
+        Ok(mut file) => {
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
+            content
+        }
+        Err(e) => {
+            eprintln!("Failed to read the file: {}", e);
+            return Err(e);
+        }
+    };
+    let dest = (client_addr, config.port_client_dos_rx);    
+    let socket = socket.socket_client_dos_rx.clone();
+
+    com::send(&socket, file_content, dest).await
+}
+
 
 pub async fn update_dos(client_addr: Ipv4Addr, username: String) {
     let file_path = "clients.json";
@@ -139,6 +158,15 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
                     let _ = send_dos(&socket_clone,&config_clone).await;
                     println!("Sent dos to other servers");
                     let _ = send_ack(&socket_clone, &config_clone,client_addr).await;
+                }
+            }
+            else if message == "REQUEST" {
+                let servers_clone = Arc::clone(&servers);
+                if find_leader(servers_clone).await == my_id{
+                    let socket_clone = Arc::clone(&socket);
+                    let config_clone = Arc::clone(&config);
+                    let _ = send_dos_client(&socket_clone,&config_clone,client_addr).await;
+                    println!("Sent dos to client");
                 }
             }   
         }

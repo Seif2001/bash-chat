@@ -10,6 +10,8 @@ use crate::image_com;
 use std::fs::{File, read_dir, create_dir_all};
 use std::path::Path;
 use std::net::Ipv4Addr;
+use std::io::Write;
+use std::io::Read;
 
 async fn send_images_from_to(
     image_path: &str,
@@ -249,6 +251,54 @@ pub async fn register_dos(socket: &Socket, config: &Config) -> std::io::Result<(
     // Loop to try registering every 5 seconds until we receive an ACK
     loop {
         send_cloud_port(&socket, &config, &register_message, config.port_client_dos_tx).await?;
+        tokio::select! {
+            _ = ack_rx.recv() => {
+                println!("ACK received, registration successful.");
+                break;
+            }
+            _ = sleep(Duration::from_secs(5)) => {
+                println!("Timeout, sending REGISTER again...");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn read_file(message: String) -> std::io::Result<()> {
+    let file_path = "clients_request.json";
+
+    let mut file = File::create(file_path)?;
+    file.write_all(message.as_bytes())?;
+
+    Ok(())
+}
+
+pub async fn request_dos(socket: &Socket, config: &Config) -> std::io::Result<()> {
+    let socket_client_dos_rx = socket.socket_client_dos_rx.clone(); // port on client
+    let message = "REQUEST";
+
+    let (ack_tx, mut ack_rx): (broadcast::Sender<bool>, broadcast::Receiver<bool>) = broadcast::channel(1); // tx `true` when ack is received
+
+    // Task that listens for an json file
+    tokio::spawn({
+        let socket_client_dos_rx = socket_client_dos_rx.clone();
+        let ack_tx = ack_tx.clone();
+        async move {
+            loop {
+                let (message, _src) = com::recv(&socket_client_dos_rx)
+                    .await
+                    .expect("Failed to receive message");
+                if let Err(e) = read_file(message.to_string()).await {
+                    eprintln!("Failed to process received file: {}", e);
+                }
+            }
+        }
+    });
+
+    // Loop to try registering every 5 seconds until we receive an ACK
+    loop {
+        send_cloud_port(&socket, &config, &message.to_string(), config.port_client_dos_tx).await?;
         tokio::select! {
             _ = ack_rx.recv() => {
                 println!("ACK received, registration successful.");
