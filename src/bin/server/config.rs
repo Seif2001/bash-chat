@@ -16,6 +16,8 @@ pub struct Config{
     pub port_election_tx: u16,
     pub port_election_rx: u16,
     pub port_failover_tx: u16,
+    pub port_server_client_rx: u16,
+    pub port_server_client_tx: u16,
     pub port_client_dos_tx: u16,
     pub port_client_dos_rx: u16,
 
@@ -29,7 +31,10 @@ pub struct Config{
     pub address_client_leader_tx: String,
     pub port_client_tx_leader: u16,
     pub address_server_client_rx: String,
-    pub raw_images_dir: String,
+
+    pub server_raw_images_dir: String,
+    pub server_encoded_images_dir: String,
+
     pub address_server_client_tx: String,
     pub address_client_dos_tx: String,
     pub address_client_dos_rx: String,
@@ -68,10 +73,8 @@ impl Config {
 
         let port_server_dos_rx = env::var("PORT_SERVER_DOS_RX").expect("PORT_SERVER_DOS_RX not set").parse::<u16>().expect("Invalid server port");
 
-        let raw_images_dir = env::var("RAW_IMAGES_DIR").expect("RAW_IMAGES_DIR not set");
-
-
-
+        let server_raw_images_dir = env::var("SERVER_RAW_IMAGES_DIR").expect("SERVER_RAW_IMAGES_DIR not set");
+        let server_encoded_images_dir = env::var("SERVER_ENCODED_IMAGES_DIR").expect("SERVER_ENCODED_IMAGES_DIR not set");
 
         // Define server addresses
         let server_ip = "0.0.0.0:";
@@ -110,6 +113,8 @@ impl Config {
             port_election_tx,
             port_election_rx,
             port_failover_tx,
+            port_server_client_rx,
+            port_server_client_tx,
             port_client_dos_tx,
             port_client_dos_rx,
             port_dos_election_tx,
@@ -120,7 +125,8 @@ impl Config {
             port_client_tx,
             port_client_tx_leader,
             address_server_client_rx,
-            raw_images_dir,
+            server_raw_images_dir,
+            server_encoded_images_dir,
             address_server_client_tx,
             address_client_dos_tx,
             address_client_dos_rx,

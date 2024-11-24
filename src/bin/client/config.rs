@@ -19,6 +19,10 @@ pub struct Config{
     pub address_client_dos_tx:String,
     pub address_client_dos_rx:String,
 
+    pub client_raw_images_dir: String,
+    pub client_encoded_images_dir: String,
+    pub client_decoded_images_dir: String,
+
     pub address_client_tx: String,
     pub address_client_rx: String,
     pub port_client_elections_rx: u16,
@@ -65,6 +69,9 @@ impl Config {
         let address_client_dos_tx = format!("{}{}", server_ip, port_client_dos_tx);
         let address_client_dos_rx = format!("{}{}", server_ip, port_client_dos_rx);
 
+        let client_raw_images_dir = env::var("CLIENT_RAW_IMAGES_DIR").expect("CLIENT_RAW_IMAGES_DIR not set");
+        let client_encoded_images_dir = env::var("CLIENT_ENCODED_IMAGES_DIR").expect("CLIENT_ENCODED_IMAGES_DIR not set");
+        let client_decoded_images_dir = env::var("CLIENT_DECODED_IMAGES_DIR").expect("CLIENT_DECODED_IMAGES_DIR not set");
 
 
         let server_ip_1 = env::var("SERVER_IP_1").expect("SERVER_IP_1 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
@@ -87,6 +94,9 @@ impl Config {
             port_client_dos_rx,
             address_client_dos_tx,
             address_client_dos_rx,
+            client_raw_images_dir,
+            client_encoded_images_dir,
+            client_decoded_images_dir,
             address_client_tx,
             address_client_rx,
             port_client_elections_rx,

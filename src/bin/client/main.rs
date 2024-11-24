@@ -7,6 +7,8 @@ pub mod socket;
 pub mod com;
 pub mod middleware;
 pub mod image_com;
+mod image_processor;
+
 
 use crate::config::Config;
 use crate::socket::Socket;
@@ -18,7 +20,7 @@ async fn main() -> io::Result<()> {
     let config = Config::new();
     //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
     middleware::register_dos(&socket, &config).await?;
-    //middleware::recv_leader(socket, config).await?;
+    let leader_ip = middleware::recv_leader(socket, config).await?;
     loop{
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }

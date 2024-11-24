@@ -15,6 +15,7 @@ use std::sync::{Arc};
 use tokio::sync::Mutex;
 use std::str::FromStr;
 
+mod image_processor;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
