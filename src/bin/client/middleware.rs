@@ -296,16 +296,16 @@ pub async fn request_dos(socket: &Socket, config: &Config) -> std::io::Result<()
         }
     });
 
-    // Loop to try registering every 5 seconds until we receive an ACK
+    // Loop to try request dos every 5 seconds until we receive an ACK
     loop {
         send_cloud_port(&socket, &config, &message.to_string(), config.port_client_dos_tx).await?;
         tokio::select! {
             _ = ack_rx.recv() => {
-                println!("ACK received, registration successful.");
+                println!("file received, request successful.");
                 break;
             }
             _ = sleep(Duration::from_secs(5)) => {
-                println!("Timeout, sending REGISTER again...");
+                println!("Timeout, sending REQUEST again...");
             }
         }
     }
