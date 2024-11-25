@@ -12,15 +12,18 @@ use std::io::Read;
 // use std::cmp::min;
 use std::io::Write;
 
-pub fn encode_image(path_input: String, path_output: String ,path_default:String) {
-    let payload_bytes = get_file_as_byte_vec(&path_input);
+pub fn encode_image(path_input: String, path_output: String ,path_default:String) -> Result<(), Box<dyn std::error::Error>> {
+    let payload_bytes = get_file_as_byte_vec(&"/home/g7/Desktop/yehia/Distributed/bash-chat/src/bin/server/raw_images/test.png".to_string());
     println!("Payload size (bytes): {}", payload_bytes.len());
+    println!("path_default: {}", path_default);
     let destination_image = file_as_dynamic_image(path_default);
     println!("Destination image dimensions: {}x{}", destination_image.width(), destination_image.height());
     let enc = Encoder::new(&payload_bytes, destination_image);
     let result = enc.encode_alpha();
     save_image_buffer(result, path_output.clone());
     println!("Encoding complete. The file has been embedded in {}", path_output);
+
+    Ok(())
 }
 
 

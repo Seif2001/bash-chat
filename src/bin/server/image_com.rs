@@ -113,22 +113,27 @@ pub async fn receive_image(
                 let image_data_locked = image_data.lock().await;
                 
                 // Define the path to save the image
-                let image_path = "/home/g7/Desktop/yehia/Distributed/bash-chat/src/bin/server/test.png";
+                // let image_path = format!("/home/g7/Desktop/yehia/Distributed/bash-chat/src/bin/server/raw_images/{}", image_path.to_string_lossy());
     
                 // Create and write the file
-                let mut file = File::create(image_path).await?;
+                let mut file = File::create(image_path.clone()).await?;
                 file.write_all(&image_data_locked).await?;
+                file.flush().await?;
+
                 println!("Image saved at: {:?}", image_path);
 
                 println!("Encoding the image...");
-                // let encoded_dir = "./server/encoded_images";
-                // let mask_image_path = "./masks/mask2.jpg";
-                // // Define the output image path in the decoded images directory
-                // let output_image_path = format!("{}/encoded_{}", encoded_dir, image_path.file_name().unwrap().to_string_lossy());
-                // encode_image(image_path.to_string_lossy().to_string(), output_image_path.to_string(), mask_image_path.to_string());
+                let encoded_dir = Path::new(&config.server_encoded_images_dir);
+                let mask_image_path = "./src/bin/server/masks/mask2.jpg";
+                // Define the output image path in the decoded images directory
+                let output_image_path = format!("{}/encoded_{}", encoded_dir.display(), Path::new(&image_path).file_name().unwrap().to_string_lossy());
+                println!("output_image_path: {}", output_image_path);
+                let _ = encode_image(image_path.to_string_lossy().to_string(), output_image_path.to_string(), mask_image_path.to_string());
 
-                // //send the encoded image to the client
-                // send_image(socket, Path::new(&output_image_path), client_ip, config.port_server_client_rx, 1024).await?;
+                //send the encoded image to the client
+                println!("Sending the encoded image to the client...");
+                send_image(socket, Path::new(&output_image_path), client_ip, config.port_client_rx, 1024).await?;
+                println!("Encoded image sent to the client.");
                 break;
             }
         }
@@ -145,10 +150,11 @@ pub async fn send_image_name(
     client_port: u16,
 ) -> Result<(), std::io::Error> {
     let dest = (client_ip, client_port);
+    println!("Sending image name: {}", image_name);
     com::send(&socket.socket_server_client_tx, image_name.to_string(), dest).await?;
-
+    println!("Sending image name: {}", image_name);
     // Wait for "NAME_ACK"
-    let (ack, _) = com::recv(&socket.socket_server_client_rx).await?;
+    let (ack, _) = com::recv(&socket.socket_server_client_tx).await?;
     if ack.trim() != "NAME_ACK" {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -159,6 +165,42 @@ pub async fn send_image_name(
     println!("Image name '{}' sent and acknowledged.", image_name);
     Ok(())
 }
+// ub async fn send_image_chunk(
+//     socket: &Socket,
+//     chunk_data: &[u8],
+//     chunk_index: u32,
+//     server_ip: Ipv4Addr,
+//     server_port: u16,
+// ) -> Result<(), std::io::Error> {
+//      // Prepare the chunk index as a byte array
+//      let mut data_with_index = chunk_index.to_be_bytes().to_vec();
+//      // Append the chunk data
+//      data_with_index.extend_from_slice(chunk_data);
+     
+//     let dest = (server_ip, 6376);
+    
+//     println!("size of chunk: {}", data_with_index.len());
+//     com::send_vec(&socket.socket_client_server_tx, data_with_index, dest).await?;
+//     println!("Chunk {} sent.", chunk_index);
+//     let (ack, _) = com::recv(&socket.socket_client_server_tx).await?;
+//     let ack_index: u32 = ack
+//         .trim()
+//         .parse()
+//         .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ACK received"))?;
+
+//     if ack_index != chunk_index {
+//         return Err(std::io::Error::new(
+//             std::io::ErrorKind::InvalidData,
+//             format!(
+//                 "Chunk index mismatch: expected {}, got {}",
+//                 chunk_index, ack_index
+//             ),
+//         ));
+//     }
+
+//     println!("Chunk {} sent and acknowledged.", chunk_index);
+//     Ok(())
+// }
 
 pub async fn send_image_chunk(
     socket: &Socket,
@@ -167,16 +209,17 @@ pub async fn send_image_chunk(
     client_ip: Ipv4Addr,
     client_port: u16,
 ) -> Result<(), std::io::Error> {
+    println!("Sending chunk {}...", chunk_index);
     let mut data_with_index = chunk_index.to_be_bytes().to_vec();
     data_with_index.extend_from_slice(chunk_data);
-
+    
     let dest = (client_ip, client_port);
-    let data_with_index_str = String::from_utf8(data_with_index)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8 sequence"))?;
-    com::send(&socket.socket_server_client_tx, data_with_index_str, dest).await?;
-
+    println!("Chunk {} sent.", chunk_index);
+    
+    com::send_vec(&socket.socket_server_client_tx, data_with_index, dest).await?;
+    
     // Wait for ACK
-    let (ack, _) = com::recv(&socket.socket_server_client_rx).await?;
+    let (ack, _) = com::recv(&socket.socket_server_client_tx).await?;
     let ack_index: u32 = ack
         .trim()
         .parse()
@@ -210,29 +253,30 @@ pub async fn send_image(
     let image_name = image_name.to_string_lossy();
 
     // Step 1: Send the image name
+    println!("Sending image name: {}", image_name);
     send_image_name(socket, &image_name, client_ip, client_port).await?;
 
     // Step 2: Open the image file and send chunks
     let mut file = File::open(image_path).await?;
-    let mut chunk_index = 0;
-    let mut buffer = vec![0u8; chunk_size];
+    let mut file_contents = Vec::new();
+    file.read_to_end(&mut file_contents).await?;
+    println!("File read into memory, size: {} bytes", file_contents.len());
 
-    loop {
-        let bytes_read = file.read(&mut buffer).await?;
-        if bytes_read == 0 {
-            break;
-        }
+    let mut chunk_index: u32 = 0;
 
+    for chunk in file_contents.chunks(chunk_size) {
         send_image_chunk(
             socket,
-            &buffer[..bytes_read],
+            chunk, // Current chunk
             chunk_index,
             client_ip,
             client_port,
         )
         .await?;
+
         chunk_index += 1;
     }
+
 
     // Step 3: Send "END" marker
     let dest = (client_ip, client_port);
