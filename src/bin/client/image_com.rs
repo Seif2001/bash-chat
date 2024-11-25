@@ -1,4 +1,5 @@
 use async_std::path::{Path, PathBuf};
+use rand::seq::index;
 use crate::config::{self, Config};
 use crate::socket::{self, Socket};
 use crate::{com, image_processor};
@@ -51,15 +52,15 @@ pub async fn send_images_from_to(
                 println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
                 
                 // Send the "START" message directly to the server
-                let dest = (server_ip, server_port);
-                com::send(&send_socket.socket_client_server_tx, "START".to_string(), dest).await?;
-                println!(" --  'START' message sent ");
+                // let dest = (server_ip, server_port);
+                // com::send(&send_socket.socket_client_server_tx, file_name.to_string(), dest).await?;
+                // println!(" --  'Name' message sent ");
 
-                // Receive leader's address from the server
-                let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
-                println!(" --  received ack to begin sending: {}", ack); // already inside the receive leader function
+                // // Receive leader's address from the server
+                // let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
+                // println!(" --  received name ack to begin sending: {}", ack); // already inside the receive leader function
 
-                send_image(&send_socket, async_std::path::Path::new(image_path), server_ip, server_port, 1024).await?;
+                send_image(&send_socket, file_name, server_ip, server_port, 1020).await?;
 
 
                 // Receive image
@@ -206,7 +207,7 @@ pub async fn send_image_name(
     let dest = (server_ip, server_port);
     com::send(&socket.socket_client_server_tx, image_name.to_string(), dest).await?;
 
-    let (ack, _) = com::recv(&socket.socket_client_rx).await?;
+    let (ack, _) = com::recv(&socket.socket_client_server_tx).await?;
     if ack.trim() != "NAME_ACK" {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -225,15 +226,17 @@ pub async fn send_image_chunk(
     server_ip: Ipv4Addr,
     server_port: u16,
 ) -> Result<(), std::io::Error> {
-    let mut data_with_index = chunk_index.to_be_bytes().to_vec();
-    data_with_index.extend_from_slice(chunk_data);
-
-    let dest = (server_ip, server_port);
-    let data_with_index_str = String::from_utf8(data_with_index)
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8 sequence"))?;
-    com::send(&socket.socket_client_server_tx, data_with_index_str, dest).await?;
-
-    let (ack, _) = com::recv(&socket.socket_client_rx).await?;
+     // Prepare the chunk index as a byte array
+     let mut data_with_index = chunk_index.to_be_bytes().to_vec();
+     // Append the chunk data
+     data_with_index.extend_from_slice(chunk_data);
+     
+    let dest = (server_ip, 6376);
+    
+    println!("size of chunk: {}", data_with_index.len());
+    com::send_vec(&socket.socket_client_server_tx, data_with_index, dest).await?;
+    println!("Chunk {} sent.", chunk_index);
+    let (ack, _) = com::recv(&socket.socket_client_server_tx).await?;
     let ack_index: u32 = ack
         .trim()
         .parse()
@@ -252,45 +255,42 @@ pub async fn send_image_chunk(
     println!("Chunk {} sent and acknowledged.", chunk_index);
     Ok(())
 }
-
 pub async fn send_image(
     socket: &Socket,
-    image_path: &Path,
+    image_name: &str,
     server_ip: Ipv4Addr,
     server_port: u16,
     chunk_size: usize,
 ) -> Result<(), std::io::Error> {
-    let image_name = image_path.file_name().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid image path")
-    })?;
-    let image_name = image_name.to_string_lossy();
+    let image_path = format!("./src/bin/client/raw_images/{}", image_name);
 
     send_image_name(socket, &image_name, server_ip, server_port).await?;
 
     let mut file = File::open(image_path).await?;
-    let mut chunk_index = 0;
-    let mut buffer = vec![0u8; chunk_size];
+    let mut file_contents = Vec::new();
+    file.read_to_end(&mut file_contents).await?;
+    println!("File read into memory, size: {} bytes", file_contents.len());
 
-    loop {
-        let bytes_read = file.read(&mut buffer).await?;
-        if bytes_read == 0 {
-            break;
-        }
+    let mut chunk_index: u32 = 0;
 
+    for chunk in file_contents.chunks(chunk_size) {
         send_image_chunk(
             socket,
-            &buffer[..bytes_read],
+            chunk, // Current chunk
             chunk_index,
             server_ip,
             server_port,
         )
         .await?;
+
         chunk_index += 1;
     }
 
-    let dest = (server_ip, server_port);
+    // Send an "END" marker to signal the completion of the image transmission
+    let dest = (server_ip, 6376);
     com::send(&socket.socket_client_server_tx, "END".to_string(), dest).await?;
     println!("END marker sent. Image transmission complete.");
 
     Ok(())
 }
+

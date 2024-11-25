@@ -30,4 +30,9 @@ pub async fn recv(socket: &Arc<Mutex<UdpSocket>>) -> io::Result<(String, SocketA
 
 
 
+pub async fn send_vec(socket: &Arc<Mutex<UdpSocket>>, message: Vec<u8>, dest: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
+    let socket = socket.lock().await;
+    socket.send_to(&message, dest).await?;
+    Ok(())
+}
 

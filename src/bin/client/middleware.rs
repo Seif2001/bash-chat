@@ -13,66 +13,66 @@ use std::net::Ipv4Addr;
 use std::io::Write;
 use std::io::Read;
 
-async fn send_images_from_to(
-    image_path: &str,
-    mut num_images: usize,
-    client_order: u32,
-    server_ip: Ipv4Addr,
-    server_port: u16,
-    send_socket: &Socket,
-    config: &Config
-) -> std::io::Result<()> {
+// async fn send_images_from_to(
+//     image_path: &str,
+//     mut num_images: usize,
+//     client_order: u32,
+//     server_ip: Ipv4Addr,
+//     server_port: u16,
+//     send_socket: &Socket,
+//     config: &Config
+// ) -> std::io::Result<()> {
 
-    println!("\n******************************************************************************");
-    println!(
-        "Client {} is sending {} images from '{}' to addr {}:{}",
-        client_order, 
-        num_images,
-        image_path, 
-        server_ip,
-        server_port
-    );
-    println!("********************************************************************************");
+//     println!("\n******************************************************************************");
+//     println!(
+//         "Client {} is sending {} images from '{}' to addr {}:{}",
+//         client_order, 
+//         num_images,
+//         image_path, 
+//         server_ip,
+//         server_port
+//     );
+//     println!("********************************************************************************");
 
 
-    for entry in read_dir(image_path)? {
-        if num_images == 0 {
-            break;
-        }
-        num_images -= 1;
+//     for entry in read_dir(image_path)? {
+//         if num_images == 0 {
+//             break;
+//         }
+//         num_images -= 1;
 
-        let entry = entry?;
-        let path = entry.path();
+//         let entry = entry?;
+//         let path = entry.path();
 
-        if path.is_file() {
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+//         if path.is_file() {
+//             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                 
-                println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
+//                 println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
                 
-                // Send the "START" message directly to the server
-                let dest = (server_ip, server_port);
-                com::send(&send_socket.socket_client_server_tx, "START".to_string(), dest).await?;
-                println!(" --  'START' message sent ");
+//                 // Send the "START" message directly to the server
+//                 let dest = (server_ip, server_port);
+//                 com::send(&send_socket.socket_client_server_tx, "START".to_string(), dest).await?;
+//                 println!(" --  'START' message sent ");
 
-                // Receive leader's address from the server
-                let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
-                println!(" --  received ack to begin sending: {}", ack); // already inside the receive leader function
+//                 // Receive leader's address from the server
+//                 let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
+//                 println!(" --  received ack to begin sending: {}", ack); // already inside the receive leader function
 
-                image_com::send_image(&send_socket, async_std::path::Path::new(image_path), server_ip, server_port, 1024).await?;
+//                 image_com::send_image(&send_socket, async_std::path::Path::new(image_path), server_ip, server_port, 1024).await?;
 
 
-                // Wait for acknowledgment from the server
-                image_com::receive_image(&send_socket, config).await?;
-            }
-        }
-    }
+//                 // Wait for acknowledgment from the server
+//                 image_com::receive_image(&send_socket, config).await?;
+//             }
+//         }
+//     }
 
-    println!("\nClient {} completed sending images to addr {}.", client_order, server_ip);
-    println!("----------------------------------------------------------------------------");
-    println!("----------------------------------------------------------------------------\n");
+//     println!("\nClient {} completed sending images to addr {}.", client_order, server_ip);
+//     println!("----------------------------------------------------------------------------");
+//     println!("----------------------------------------------------------------------------\n");
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 // send to 3 servers
 
