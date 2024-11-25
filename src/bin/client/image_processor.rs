@@ -2,6 +2,7 @@ extern crate steganography;
 use steganography::decoder::*;
 use steganography::encoder::*;
 use steganography::util::*;
+use show_image::{create_window, ImageInfo, ImageView};
 
 // use image::{DynamicImage, RgbaImage, Rgba, ImageBuffer, GenericImageView};
 // only the GenericImageView is needed
@@ -55,4 +56,25 @@ pub fn decode_image(path_input: String, output_file: String) {
     file.write_all(&out_buffer).expect("Failed to write to file");
 
     println!("Decoding complete. The file has been recovered to {}", output_file);
+}
+
+pub fn create_small_image(path_input: String,output_file: String){
+    let img = image::open(&path_input).unwrap();
+    let img = img.thumbnail(100, 100);
+    img.save(output_file).unwrap();
+}
+
+pub fn display_image(image_path: &str) {
+    if let Ok(img) = image::open(image_path) {
+        let img = img.to_rgb(); // Convert to RGB format
+        let (width, height) = img.dimensions();
+
+        let window = create_window("Image Viewer", Default::default()).unwrap();
+
+        let image_info = ImageInfo::rgb8(width, height);
+        let image_view = ImageView::new(image_info, &img);
+        window.set_image("Image", image_view).unwrap();
+    } else {
+        println!("Failed to load image.");
+    }
 }

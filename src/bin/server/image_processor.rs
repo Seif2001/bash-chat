@@ -56,3 +56,9 @@ pub fn decode_image(path_input: String, output_file: String) {
 
     println!("Decoding complete. The file has been recovered to {}", output_file);
 }
+
+pub fn create_small_image(path_input: String,output_file: String){
+    let img = image::open(&path_input).unwrap();
+    let img = img.thumbnail(100, 100);
+    img.save(output_file).unwrap();
+}
