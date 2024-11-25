@@ -46,6 +46,7 @@ async fn main() -> std::io::Result<()> {
     leader::elections_dos(servers, &socket_arc).await;
     dos::dos_registrar(server_clone.clone(),my_id, &socket_arc, &config_arc).await;
     dos::recv_dos(&socket_arc, &config_arc).await;
+    image_com::receive_image(&socket, &config);
     //let add: Ipv4Addr = Ipv4Addr::from_str("192.168.1.2").expect("Invalid IP address");
     //dos::update_dos(add,"test123".to_string()).await;
 
