@@ -5,6 +5,8 @@ use std::sync::Arc;
 use crate::{config::Config, socket};
 
 pub struct Socket{
+    pub socket_client_tx: Arc<Mutex<UdpSocket>>,
+    pub socket_client_rx: Arc<Mutex<UdpSocket>>,
     pub socket_election_tx: Arc<Mutex<UdpSocket>>,
     pub socket_election_rx: Arc<Mutex<UdpSocket>>,
     pub socket_failover_tx: Arc<Mutex<UdpSocket>>,
@@ -41,6 +43,8 @@ impl Socket{
         let socket_client_dos_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_client_dos_rx).await.expect("Error binding")));
         let socket_dos_election_tx = Arc::new(Mutex::new(UdpSocket::bind(config.address_dos_election_tx).await.expect("Error binding")));
         let socket_dos_election_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_dos_election_rx).await.expect("Error binding")));
+        let socket_client_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_client_rx).await.expect("Error binding")));
+        let socket_client_tx = Arc::new(Mutex::new(UdpSocket::bind(config.address_client_tx).await.expect("Error binding")));
 
         let socket_server_dos_rx = Arc::new(Mutex::new(UdpSocket::bind(config.address_server_dos_rx).await.expect("Error binding")));
 
@@ -48,6 +52,8 @@ impl Socket{
         
 
         Socket{
+            socket_client_tx,
+            socket_client_rx,
             socket_client_elections_rx,
             socket_election_tx,
             socket_election_rx,

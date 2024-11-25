@@ -134,7 +134,7 @@ pub async fn send_leader_to_client(socket:&Socket, client_addr: Ipv4Addr, port: 
     let message = format!("{}:{}", "LEADER", leader_id);
     let dest = (client_addr, port);
     let socket = socket.socket_client_leader_tx.clone();
-    println!("Sending to clien at {}:{}", dest.0, dest.1);
+    println!("Sending to client at {}:{}", dest.0, dest.1);
     com::send(&socket,message, dest).await.expect("Failed to send leader to client");
 }
 

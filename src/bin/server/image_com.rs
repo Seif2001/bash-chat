@@ -12,8 +12,8 @@ use image_processor::encode_image;
 
 //Receiving
 pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBuf, Ipv4Addr), std::io::Error> {
-    let socket_server_client_rx = &socket.socket_server_client_rx;
-    let socket_server_client_tx = &socket.socket_server_client_tx;
+    let socket_server_client_rx = &socket.socket_client_rx;
+    let socket_server_client_tx = &socket.socket_client_tx;
     let (image_name, src) = com::recv(&socket_server_client_rx).await?;
     let image_name = image_name.trim();
     println!("Received message: {}", image_name);
@@ -33,7 +33,8 @@ pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBu
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid IP address"))?,
         src.port(),
     ); 
-    com::send(&socket_server_client_tx, "NAME_ACK".to_string(), (dest)).await?;
+    println!("dest: {:?}", dest);
+    com::send(&socket_server_client_rx, "NAME_ACK".to_string(), (dest)).await?;
     Ok((image_path.to_path_buf(), client_ip))
 }
 
@@ -46,17 +47,16 @@ pub async fn recv_image_chunk(
     let socket_server_rx = socket.socket_server_client_rx.clone();
     let socket_server_tx = socket.socket_server_client_tx.clone();
     
-    let (buf, src) = com::recv(&socket_server_rx).await?;
+    let (buf, src) = com::recv_raw(&socket_server_rx).await?;
     let len = buf.len();
+    println!("Received chunk: {:?}", len);
 
-    if len == 3 && &buf[..3] == "END" {
+    if &buf[..3] == b"END" {
         println!("Received 'END' marker. Transmission completed.");
         return Ok(None); // Signal the end of transmission
     }
-
     let chunk_index = u32::from_be_bytes(
         buf[..4]
-            .as_bytes()
             .try_into()
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid chunk index format"))?,
     );
@@ -65,7 +65,7 @@ pub async fn recv_image_chunk(
         image_data
             .lock()
             .await
-            .extend_from_slice(&buf.as_bytes()[4..len]);
+            .extend_from_slice(&buf[4..len]);
 
         let dest = (
             src.ip()
@@ -74,7 +74,7 @@ pub async fn recv_image_chunk(
                 .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid IP address"))?,
             src.port(),
         );
-        com::send(&socket_server_tx, chunk_index.to_string(), dest)
+        com::send(&socket_server_tx, chunk_index.to_string(), (dest))
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to send ACK: {}", e)))?;
 
@@ -108,19 +108,27 @@ pub async fn receive_image(
             None => {
                 // "END" marker detected; save the image and exit
                 println!("Saving received image...");
-                let mut file = File::create(&image_path).await?;
-                file.write_all(&image_data.lock().await).await?;
+                
+                // Lock the image data to get all received chunks
+                let image_data_locked = image_data.lock().await;
+                
+                // Define the path to save the image
+                let image_path = "/home/g7/Desktop/yehia/Distributed/bash-chat/src/bin/server/test.png";
+    
+                // Create and write the file
+                let mut file = File::create(image_path).await?;
+                file.write_all(&image_data_locked).await?;
                 println!("Image saved at: {:?}", image_path);
 
                 println!("Encoding the image...");
-                let encoded_dir = "./server/encoded_images";
-                let mask_image_path = "./masks/mask2.jpg";
-                // Define the output image path in the decoded images directory
-                let output_image_path = format!("{}/encoded_{}", encoded_dir, image_path.file_name().unwrap().to_string_lossy());
-                encode_image(image_path.to_string_lossy().to_string(), output_image_path.to_string(), mask_image_path.to_string());
+                // let encoded_dir = "./server/encoded_images";
+                // let mask_image_path = "./masks/mask2.jpg";
+                // // Define the output image path in the decoded images directory
+                // let output_image_path = format!("{}/encoded_{}", encoded_dir, image_path.file_name().unwrap().to_string_lossy());
+                // encode_image(image_path.to_string_lossy().to_string(), output_image_path.to_string(), mask_image_path.to_string());
 
-                //send the encoded image to the client
-                send_image(socket, Path::new(&output_image_path), client_ip, config.port_server_client_rx, 1024).await?;
+                // //send the encoded image to the client
+                // send_image(socket, Path::new(&output_image_path), client_ip, config.port_server_client_rx, 1024).await?;
                 break;
             }
         }
