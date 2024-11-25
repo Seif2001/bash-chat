@@ -10,6 +10,7 @@ use async_std::stream::StreamExt;
 use async_std::fs::{File, read_dir};
 use async_std::io::prelude::*;
 use std::convert::TryInto;
+use std::io::Write;
 use tokio::sync::Mutex;
 use image_processor::decode_image;
 // send to leader image
@@ -77,20 +78,21 @@ pub async fn send_images_from_to(
 }
 //Receiving
 pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBuf, Ipv4Addr), std::io::Error> {
-    let socket_client_server_rx = &socket.socket_client_rx;
-    let socket_client_server_tx = &socket.socket_client_server_tx;
-    let (image_name, src) = com::recv(&socket_client_server_rx).await?;
+    //let socket_client_server_rx = &socket.socket_client_rx;
+    let socket_client_server_tx = &socket.socket_client_tx;
+    let (image_name, src) = com::recv(&socket.socket_client_rx).await?;
     let image_name = image_name.trim();
     println!("Received image name: {}", image_name);
 
     let image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
-
+    println!("Image path: {:?}", image_path);
     let server_ip = match src {
         std::net::SocketAddr::V4(addr) => *addr.ip(),
         std::net::SocketAddr::V6(addr) => {
             panic!("Expected Ipv4Addr but got Ipv6Addr: {}", addr)
         }
     };
+    
 
     let dest = (
         src.ip()
@@ -101,6 +103,7 @@ pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBu
     );
 
     com::send(&socket_client_server_tx, "NAME_ACK".to_string(), dest).await?;
+    println!("NAME_ACK sent.");
     Ok((image_path.to_path_buf(), server_ip))
 }
 
@@ -113,26 +116,25 @@ pub async fn recv_image_chunk(
     let socket_client_rx = socket.socket_client_rx.clone();
     let socket_client_tx = socket.socket_client_server_tx.clone();
 
-    let (buf, src) = com::recv(&socket_client_rx).await?;
+    let (buf, src) = com::recv_raw(&socket_client_rx).await?;
     let len = buf.len();
-
-    if len == 3 && &buf[..3] == "END" {
+    println!("Received chunk of size {} bytes.", len);
+    if len == 3 && &buf[..3] == b"END" {
         println!("Received 'END' marker. Transmission completed.");
         return Ok(None); // Signal the end of transmission
     }
 
     let chunk_index = u32::from_be_bytes(
-        buf[..4]
-            .as_bytes()
-            .try_into()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid chunk index format"))?,
-    );
+            buf[..4]
+                .try_into()
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid chunk index format"))?,
+        );
 
     if chunk_index == expected_chunk_index {
         image_data
             .lock()
             .await
-            .extend_from_slice(&buf.as_bytes()[4..len]);
+            .extend_from_slice(&buf[4..len]);
 
         let dest = (
             src.ip()

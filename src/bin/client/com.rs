@@ -28,6 +28,15 @@ pub async fn recv(socket: &Arc<Mutex<UdpSocket>>) -> io::Result<(String, SocketA
     Ok((message, src))
 }
 
+pub async fn recv_raw(socket: &Arc<Mutex<UdpSocket>>) -> io::Result<([u8; 1024], SocketAddr)> {
+    let socket = socket.lock().await;
+    let mut buf = [0; 1024];
+
+    // Receive data from the UDP socket
+    let (amt, src) = socket.recv_from(&mut buf).await?;
+
+    Ok((buf, src))
+}
 
 
 pub async fn send_vec(socket: &Arc<Mutex<UdpSocket>>, message: Vec<u8>, dest: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
