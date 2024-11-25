@@ -25,8 +25,8 @@ async fn main() -> std::io::Result<()> {
     let servers: Arc<Mutex<std::collections::HashMap<u32, Node>>> = Arc::new(Mutex::new(
         vec![
             (0, Node{is_leader: true, is_dos_leader:true, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
-            (1, Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
-            (2,Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
+            // (1, Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
+            // (2,Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
         ].into_iter().collect()
     ));
 
@@ -46,7 +46,10 @@ async fn main() -> std::io::Result<()> {
     leader::elections_dos(servers, &socket_arc).await;
     dos::dos_registrar(server_clone.clone(),my_id, &socket_arc, &config_arc).await;
     dos::recv_dos(&socket_arc, &config_arc).await;
-    _ = image_com::receive_image(&socket_arc, &config_arc);
+    println!("Before recv images");
+    _ = image_com::receive_image(&socket_arc, &config_arc).await;
+    println!("after recv images");
+
     //let add: Ipv4Addr = Ipv4Addr::from_str("192.168.1.2").expect("Invalid IP address");
     //dos::update_dos(add,"test123".to_string()).await;
 
