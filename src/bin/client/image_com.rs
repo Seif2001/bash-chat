@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 use image_processor::decode_image;
 // send to leader image
 
-async fn send_images_from_to(
+pub async fn send_images_from_to(
     image_path: &str,
     mut num_images: usize,
     client_order: u32,

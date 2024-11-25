@@ -195,30 +195,25 @@ pub async fn send_cloud_port(socket: &Socket, config: &Config, message: &String,
 
 // receive leader message
 
-pub async fn recv_leader(socket: Socket, config: Config) -> std::io::Result<()> {
+
+pub async fn recv_leader(socket: &Socket, config: &Config) -> Ipv4Addr {
     let socket_client_leader_rx = socket.socket_client_leader_rx.clone();
     let socket_client_tx = socket.socket_client_tx.clone();
 
-    tokio::spawn({
-        async move {
-            loop {
-            let (message, src) = com::recv(&socket_client_leader_rx).await.expect("Failed to receive message");
-            let message = message.trim();
-            let src = src.ip();
-            
-                if message.starts_with("LEADER") {
-                    println!("Received leader message from {}: {}", src, message);
-                    if let std::net::IpAddr::V4(ipv4_src) = src {
-                        return ipv4_src;
-                    } else {
-                        eprintln!("Received non-IPv4 address: {}", src);
-                    }
-                
-                }
+    loop {
+        let (message, src) = com::recv(&socket_client_leader_rx).await.expect("Failed to receive message");
+        let message = message.trim();
+        let src = src.ip();
+
+        if message.starts_with("LEADER") {
+            println!("Received leader message from {}: {}", src, message);
+            if let std::net::IpAddr::V4(ipv4_src) = src {
+                return ipv4_src;
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
             }
         }
-    });
-    Ok(())
+    }
 }
 
 //P2P Communication
