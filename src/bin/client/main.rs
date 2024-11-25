@@ -28,7 +28,9 @@ async fn main() -> io::Result<()> {
     let mut clients = dos::parse_clients("clients_request.json",&config.username);
     dos::print_clients(clients);
     let leader_ip:Ipv4Addr= middleware::recv_leader(&socket, &config).await;
+    println!("Before send images");
     image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, 6384, &socket, &config).await?;
+    println!("After send images");
     //image_processor::create_small_image("test.jpg".to_string(),"test_small.jpg".to_string());
     //image_processor::display_image("test_small.jpg");
    

@@ -200,6 +200,7 @@ pub async fn recv_leader(socket: &Socket, config: &Config) -> Ipv4Addr {
     let socket_client_leader_rx = socket.socket_client_leader_rx.clone();
     let socket_client_tx = socket.socket_client_tx.clone();
 
+    send_cloud(&socket, &config, &"START".to_string()).await.expect("Failed to send message");
     loop {
         let (message, src) = com::recv(&socket_client_leader_rx).await.expect("Failed to receive message");
         let message = message.trim();
