@@ -15,6 +15,8 @@ pub struct Config{
     pub server_ip_3: Ipv4Addr,
     pub port_client_dos_tx:u16,
     pub port_client_dos_rx:u16,
+    pub port_client_rx: u16,
+    pub port_server_client_rx: u16,
 
     pub address_client_dos_tx:String,
     pub address_client_dos_rx:String,
@@ -47,6 +49,7 @@ impl Config {
         let port_client_tx = env::var("PORT_CLIENT_TX").expect("PORT_CLIENT_TX not set").parse::<u16>().expect("Invalid client port");
         let port_client_rx = env::var("PORT_CLIENT_RX").expect("PORT_CLIENT_RX not set").parse::<u16>().expect("Invalid client port");
         let port_client_server_tx = env::var("PORT_CLIENT_SERVER_TX").expect("PORT_CLIENT_SERVER_TX not set").parse::<u16>().expect("Invalid client port");
+        let port_server_client_rx = env::var("PORT_SERVER_CLIENT_RX").expect("PORT_SERVER_CLIENT_RX not set").parse::<u16>().expect("Invalid server port");
         let port_server_rx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
         let port_server_tx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
 
@@ -92,6 +95,8 @@ impl Config {
             server_ip_3,
             port_client_dos_tx,
             port_client_dos_rx,
+            port_client_rx,
+            port_server_client_rx,
             address_client_dos_tx,
             address_client_dos_rx,
             client_raw_images_dir,

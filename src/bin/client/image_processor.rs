@@ -39,6 +39,7 @@ fn get_file_as_byte_vec(filename: &String) -> Vec<u8> {
 pub fn decode_image(path_input: String, output_file: String) {
     // Step 1: Load the encoded image
     let encoded_image = file_as_image_buffer(path_input);
+    //let encoded_image = get_file_as_byte_vec()
     
     // Debug: Log image dimensions
     println!("Encoded image dimensions: {}x{}", encoded_image.width(), encoded_image.height());

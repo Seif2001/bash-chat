@@ -61,7 +61,7 @@ pub async fn send_images_from_to(
                 // let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
                 // println!(" --  received name ack to begin sending: {}", ack); // already inside the receive leader function
 
-                send_image(&send_socket, file_name, server_ip, server_port, 1020).await?;
+                send_image(&send_socket, file_name, server_ip, server_port, 1020, &config).await?;
 
 
                 // Receive image
@@ -119,7 +119,7 @@ pub async fn recv_image_chunk(
     let (buf, src) = com::recv_raw(&socket_client_rx).await?;
     let len = buf.len();
     println!("Received chunk of size {} bytes.", len);
-    if len == 3 && &buf[..3] == b"END" {
+    if &buf[..3] == b"END" {
         println!("Received 'END' marker. Transmission completed.");
         return Ok(None); // Signal the end of transmission
     }
@@ -176,6 +176,7 @@ pub async fn receive_image(
                 let mut file = File::create(&image_path).await?;
                 file.write_all(&image_data.lock().await).await?;
                 println!("Image saved at: {:?}", image_path);
+                file.flush().await?;
                 decode_received_image(image_path.to_str().unwrap());
                 break;
             }
@@ -186,11 +187,11 @@ pub async fn receive_image(
 }
 
 fn decode_received_image(encoded_image_path: &str) {
-    let decoded_dir = "./client/decoded_images";
-    create_dir_all(decoded_dir).expect("Failed to create decoded images directory");
-
-     // Define the output image path in the decoded images directory
-     let output_image_path = format!("{}/decoded_{}", decoded_dir, encoded_image_path.split('/').last().unwrap());
+    let decoded_dir = Path::new(&Config::new().client_decoded_images_dir).to_str().unwrap().to_string();
+    create_dir_all(decoded_dir.clone()).expect("Failed to create decoded images directory");
+    
+    // Define the output image path in the decoded images directory
+    let output_image_path = format!("{}/{}", decoded_dir, encoded_image_path.split('/').last().unwrap());
 
     println!(" ---> Decoding received image...");
 
@@ -263,6 +264,7 @@ pub async fn send_image(
     server_ip: Ipv4Addr,
     server_port: u16,
     chunk_size: usize,
+    config: &Config
 ) -> Result<(), std::io::Error> {
     let image_path = format!("./src/bin/client/raw_images/{}", image_name);
 
@@ -289,7 +291,7 @@ pub async fn send_image(
     }
 
     // Send an "END" marker to signal the completion of the image transmission
-    let dest = (server_ip, 6376);
+    let dest = (server_ip, config.port_server_client_rx);
     com::send(&socket.socket_client_server_tx, "END".to_string(), dest).await?;
     println!("END marker sent. Image transmission complete.");
 
