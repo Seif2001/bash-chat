@@ -8,6 +8,8 @@ use async_std::fs::File;
 use async_std::io::prelude::*;
 use std::convert::TryInto;
 use tokio::sync::Mutex;
+use tokio::time::{self, Duration};
+
 use image_processor::encode_image;
 
 //Receiving
@@ -126,13 +128,13 @@ pub async fn receive_image(
                 let encoded_dir = Path::new(&config.server_encoded_images_dir);
                 let mask_image_path = "./src/bin/server/masks/mask2.jpg";
                 // Define the output image path in the decoded images directory
-                let output_image_path = format!("{}/encoded_{}", encoded_dir.display(), Path::new(&image_path).file_name().unwrap().to_string_lossy());
+                let output_image_path = format!("{}/{}", encoded_dir.display(), Path::new(&image_path).file_name().unwrap().to_string_lossy());
                 println!("output_image_path: {}", output_image_path);
                 let _ = encode_image(image_path.to_string_lossy().to_string(), output_image_path.to_string(), mask_image_path.to_string());
 
                 //send the encoded image to the client
                 println!("Sending the encoded image to the client...");
-                send_image(socket, Path::new(&output_image_path), client_ip, config.port_client_rx, 1024).await?;
+                send_image(socket, Path::new(&output_image_path), client_ip, config.port_client_rx, 1020).await?;
                 println!("Encoded image sent to the client.");
                 break;
             }
@@ -209,34 +211,58 @@ pub async fn send_image_chunk(
     client_ip: Ipv4Addr,
     client_port: u16,
 ) -> Result<(), std::io::Error> {
-    println!("Sending chunk {}...", chunk_index);
-    let mut data_with_index = chunk_index.to_be_bytes().to_vec();
-    data_with_index.extend_from_slice(chunk_data);
-    
-    let dest = (client_ip, client_port);
-    println!("Chunk {} sent.", chunk_index);
-    
-    com::send_vec(&socket.socket_server_client_tx, data_with_index, dest).await?;
-    
-    // Wait for ACK
-    let (ack, _) = com::recv(&socket.socket_server_client_tx).await?;
-    let ack_index: u32 = ack
-        .trim()
-        .parse()
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ACK received"))?;
+    let timeout_duration: Duration = Duration::from_secs(1);
+    let max_retries: u32 = 3;
+    let mut retries = 0;
+    loop {
+        println!("Sending chunk {} (attempt {})...", chunk_index, retries + 1);
+        let mut data_with_index = chunk_index.to_be_bytes().to_vec();
+        data_with_index.extend_from_slice(chunk_data);
 
-    if ack_index != chunk_index {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!(
-                "Chunk index mismatch: expected {}, got {}",
-                chunk_index, ack_index
-            ),
-        ));
+        let dest = (client_ip, client_port);
+        com::send_vec(&socket.socket_server_client_tx, data_with_index.clone(), dest).await?;
+
+        // Wait for ACK with a timeout
+        match time::timeout(timeout_duration, com::recv(&socket.socket_server_client_tx)).await {
+            Ok(Ok((ack, _))) => {
+                // Parse the ACK index
+                let ack_index: u32 = ack
+                    .trim()
+                    .parse()
+                    .map_err(|_| {
+                        std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ACK received")
+                    })?;
+
+                if ack_index == chunk_index {
+                    println!("Chunk {} sent and acknowledged.", chunk_index);
+                    return Ok(());
+                } else {
+                    println!(
+                        "ACK index mismatch: expected {}, got {}. Retrying...",
+                        chunk_index, ack_index
+                    );
+                }
+            }
+            Ok(Err(err)) => {
+                println!("Error receiving ACK for chunk {}: {}. Retrying...", chunk_index, err);
+            }
+            Err(_) => {
+                println!(
+                    "Timeout waiting for ACK for chunk {}. Retrying...",
+                    chunk_index
+                );
+            }
+        }
+
+        retries += 1;
+
+        if retries >= max_retries {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("Failed to receive ACK for chunk {} after {} retries", chunk_index, retries),
+            ));
+        }
     }
-
-    println!("Chunk {} sent and acknowledged.", chunk_index);
-    Ok(())
 }
 
 pub async fn send_image(
