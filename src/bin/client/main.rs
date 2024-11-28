@@ -21,7 +21,7 @@ use crate::socket::Socket;
 
 async fn main() -> io::Result<()> {
     let config = Config::new();
-    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx).await;
+    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
     let config = Config::new();
     //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
     dos::register_dos(&socket, &config).await?;
@@ -32,6 +32,13 @@ async fn main() -> io::Result<()> {
     println!("Before send images");
     image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
     println!("After send images");
+
+    // Client 2 Config
+    // Respond to "image Request"
+    middleware::p2p_recv_image_request(&socket, &config).await?;
+    // Respond to "Image Name"
+    // middleware::p2p_recv_image_name(&socket).await?;
+
 
     Ok(())
 }

@@ -37,7 +37,7 @@ pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBu
     ); 
     println!("dest: {:?}", dest);
     let socket = socket.new_server_socket().await;
-    com::send(&socket, "NAME_ACK".to_string(), (dest)).await?;
+    com::send(&socket, "NAME_ACK".to_string(), dest).await?;
     Ok((image_path.to_path_buf(), dest, socket))
 }
 

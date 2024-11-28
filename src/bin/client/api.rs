@@ -1,5 +1,6 @@
 use std::io::{self, Write};
-use tokio::sync::mpsc;
+use tokio::net::UdpSocket;
+use tokio::sync::{mpsc, Mutex};
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 
@@ -40,8 +41,36 @@ pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::R
 }
 
 
-pub async fn request_image(socket: &Socket, config: &Config, image_name: String, client_ip: Ipv4Addr) -> io::Result<()>{
-    let request_message = "GET " + image_name;
-    middleware::p2p_send_image_request(socket, config, client_address, request_message);
-    image_com::receive_image(socket, config);
+pub async fn request_image(
+    socket: &Socket,
+    config: &Config,
+    sending_socket: Arc<Mutex<UdpSocket>>,
+    image_name: String,
+    client_ip: Ipv4Addr,
+    client_port: u16,
+    is_high: bool
+) -> io::Result<()> {
+    let request_message = if is_high {
+        format!("GET H {}", image_name)
+    } else {
+        format!("GET L {}", image_name)
+    };
+
+    // Attempt to send the image request
+    //low quality
+    let low_path = async_std::path::PathBuf::from(config.client_low_quality_images_dir.clone());
+    match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip,client_port, &request_message, low_path.clone()).await {
+        Ok(_) => {
+            // If the request is successful, proceed to sending the image
+            image_com::receive_image(socket, config, sending_socket, low_path).await?;
+            Ok(())
+        }
+        Err(e) => {
+            // If there is an error in sending the request, handle the error
+            eprintln!("Failed to send image request: {}", e);
+            // Optionally, you can try to recover, retry, or just return the error
+            Err(e)
+        }
+    }
 }
+
