@@ -26,9 +26,9 @@ pub struct Config{
     pub client_decoded_images_dir: String,
 
     pub address_client_tx: String,
-    //pub address_client_rx: String,
+    pub address_client_rx: String,
     pub port_client_elections_rx: u16,
-    //pub address_client_leader_rx: String,
+    pub address_client_leader_rx: String,
     pub port_server_rx: u16,
 
     //pub address_client_server_tx: String,
@@ -44,7 +44,7 @@ impl Config {
         let port_server_2 = env::var("PORT_SERVER_2").expect("PORT_SERVER_2 not set").parse::<u16>().expect("Invalid server port");
         let port_server_3 = env::var("PORT_SERVER_3").expect("PORT_SERVER_3 not set").parse::<u16>().expect("Invalid server port");
 
-       // let port_client_leader_rx = env::var("PORT_CLIENT_TX_LEADER").expect("PORT_CLIENT_RX not set").parse::<u16>().expect("Invalid client port");
+       let port_client_leader_rx = env::var("PORT_CLIENT_TX_LEADER").expect("PORT_CLIENT_RX not set").parse::<u16>().expect("Invalid client port");
         let port_client_elections_rx = env::var("PORT_CLIENT_ELECTIONS_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
         let port_client_tx = env::var("PORT_CLIENT_TX").expect("PORT_CLIENT_TX not set").parse::<u16>().expect("Invalid client port");
         let port_client_rx = env::var("PORT_CLIENT_RX").expect("PORT_CLIENT_RX not set").parse::<u16>().expect("Invalid client port");
@@ -60,9 +60,9 @@ impl Config {
         let address_server_1 = format!("{}{}", server_ip, port_server_1);
         let address_server_2 = format!("{}{}", server_ip, port_server_2);
         let address_server_3 = format!("{}{}", server_ip, port_server_3);
-        //let address_client_leader_rx = format!("{}{}", server_ip, port_client_leader_rx);
+        let address_client_leader_rx = format!("{}{}", server_ip, port_client_leader_rx);
         let address_client_tx = format!("{}{}", server_ip, port_client_tx);
-        //let address_client_rx = format!("{}{}", server_ip, port_client_rx);
+        let address_client_rx = format!("{}{}", server_ip, port_client_rx);
         //let address_client_server_tx = format!("{}{}", server_ip, port_client_server_tx);
 
         let port_client_dos_tx = env::var("PORT_CLIENT_DOS_TX").expect("PORT_CLIENT_DOS_TX not set").parse::<u16>().expect("Invalid server port");
@@ -103,9 +103,9 @@ impl Config {
             client_encoded_images_dir,
             client_decoded_images_dir,
             address_client_tx,
-            //address_client_rx,
+            address_client_rx,
             port_client_elections_rx,
-            //address_client_leader_rx,
+            address_client_leader_rx,
             port_server_rx,
             //address_client_server_tx,
             username

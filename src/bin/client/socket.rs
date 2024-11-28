@@ -20,7 +20,7 @@ pub struct Socket{
 }
 
 impl Socket{
-    pub async fn new(address_server_1:String, address_server_2: String, address_server_3: String, client_address_leader_rx: String, client_address_tx: String, client_address_rx: String, address_client_server_tx: String, address_client_dos_tx:String,address_client_dos_rx:String) -> Self{
+    pub async fn new(address_server_1:String, address_server_2: String, address_server_3: String, client_address_leader_rx: String, client_address_tx: String, client_address_rx: String, address_client_dos_tx:String,address_client_dos_rx:String) -> Self{
         
 
         //bind the sockets

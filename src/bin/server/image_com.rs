@@ -16,7 +16,6 @@ use image_processor::encode_image;
 //Receiving
 pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBuf, (Ipv4Addr, u16), Arc<Mutex<UdpSocket>>), std::io::Error> {
     let socket_server_client_rx = &socket.socket_client_rx;
-    let socket_server_client_tx = &socket.socket_client_tx;
     let (image_name, src) = com::recv(&socket_server_client_rx).await?;
     let image_name = image_name.trim();
     println!("Received message: {}", image_name);
@@ -45,11 +44,11 @@ pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBu
 pub async fn recv_image_chunk(
     socket: &Socket,
     config: &Config,
+    socket_server: Arc<Mutex<UdpSocket>>,
     expected_chunk_index: u32,
     image_data: Arc<Mutex<Vec<u8>>>,
 ) -> Result<Option<u32>, std::io::Error> {
-    let socket_server_rx = socket.socket_server_client_rx.clone();
-    let socket_server_tx = socket.socket_server_client_tx.clone();
+    let socket_server_rx = socket_server.clone();
     
     let (buf, src) = com::recv_raw(&socket_server_rx).await?;
     let len = buf.len();
@@ -78,7 +77,7 @@ pub async fn recv_image_chunk(
                 .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid IP address"))?,
             src.port(),
         );
-        com::send(&socket_server_tx, chunk_index.to_string(), (dest))
+        com::send(&socket_server_rx, chunk_index.to_string(), (dest))
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to send ACK: {}", e)))?;
 
@@ -105,7 +104,7 @@ pub async fn receive_image(
 
     // Step 2: Receive image chunks
     loop {
-        match recv_image_chunk(socket, config, expected_chunk_index, image_data.clone()).await? {
+        match recv_image_chunk(socket, config, socket_server.clone(), expected_chunk_index, image_data.clone()).await? {
             Some(next_chunk_index) => {
                 expected_chunk_index = next_chunk_index; // Continue to the next chunk
             }
@@ -136,7 +135,7 @@ pub async fn receive_image(
 
                 //send the encoded image to the client
                 println!("Sending the encoded image to the client...");
-                send_image(socket, Path::new(&output_image_path), client_addr.0, client_addr.1, 1020).await?;
+                send_image(socket, socket_server, Path::new(&output_image_path), client_addr.0, client_addr.1, 1020).await?;
                 println!("Encoded image sent to the client.");
                 break;
             }
@@ -149,16 +148,17 @@ pub async fn receive_image(
 //Sending
 pub async fn send_image_name(
     socket: &Socket,
+    socket_server: Arc<Mutex<UdpSocket>>,
     image_name: &str,
     client_ip: Ipv4Addr,
     client_port: u16,
 ) -> Result<(), std::io::Error> {
     let dest = (client_ip, client_port);
     println!("Sending image name: {}", image_name);
-    com::send(&socket.socket_server_client_tx, image_name.to_string(), dest).await?;
+    com::send(&socket_server, image_name.to_string(), dest).await?;
     println!("Sending image name: {}", image_name);
     // Wait for "NAME_ACK"
-    let (ack, _) = com::recv(&socket.socket_server_client_tx).await?;
+    let (ack, _) = com::recv(&socket_server).await?;
     if ack.trim() != "NAME_ACK" {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -208,6 +208,7 @@ pub async fn send_image_name(
 
 pub async fn send_image_chunk(
     socket: &Socket,
+    socket_server: Arc<Mutex<UdpSocket>>,
     chunk_data: &[u8],
     chunk_index: u32,
     client_ip: Ipv4Addr,
@@ -222,10 +223,10 @@ pub async fn send_image_chunk(
         data_with_index.extend_from_slice(chunk_data);
 
         let dest = (client_ip, client_port);
-        com::send_vec(&socket.socket_server_client_tx, data_with_index.clone(), dest).await?;
+        com::send_vec(&socket_server, data_with_index.clone(), dest).await?;
 
         // Wait for ACK with a timeout
-        match time::timeout(timeout_duration, com::recv(&socket.socket_server_client_tx)).await {
+        match time::timeout(timeout_duration, com::recv(&socket_server)).await {
             Ok(Ok((ack, _))) => {
                 // Parse the ACK index
                 let ack_index: u32 = ack
@@ -269,6 +270,7 @@ pub async fn send_image_chunk(
 
 pub async fn send_image(
     socket: &Socket,
+    socket_server: Arc<Mutex<UdpSocket>>,
     image_path: &Path,
     client_ip: Ipv4Addr,
     client_port: u16,
@@ -282,7 +284,7 @@ pub async fn send_image(
 
     // Step 1: Send the image name
     println!("Sending image name: {}", image_name);
-    send_image_name(socket, &image_name, client_ip, client_port).await?;
+    send_image_name(socket, socket_server.clone(), &image_name, client_ip, client_port).await?;
 
     // Step 2: Open the image file and send chunks
     let mut file = File::open(image_path).await?;
@@ -295,6 +297,7 @@ pub async fn send_image(
     for chunk in file_contents.chunks(chunk_size) {
         send_image_chunk(
             socket,
+            socket_server.clone(),
             chunk, // Current chunk
             chunk_index,
             client_ip,
@@ -308,7 +311,7 @@ pub async fn send_image(
 
     // Step 3: Send "END" marker
     let dest = (client_ip, client_port);
-    com::send(&socket.socket_server_client_tx, "END".to_string(), dest).await?;
+    com::send(&socket_server.clone(), "END".to_string(), dest).await?;
     println!("END marker sent. Image transmission complete.");
 
     Ok(())
