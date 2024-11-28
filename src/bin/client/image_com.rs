@@ -1,5 +1,6 @@
 use async_std::path::{Path, PathBuf};
 use rand::seq::index;
+use tokio::net::UdpSocket;
 use crate::config::{self, Config};
 use crate::socket::{self, Socket};
 use crate::{com, image_processor};
@@ -79,7 +80,7 @@ pub async fn send_images_from_to(
 //Receiving
 pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBuf, Ipv4Addr), std::io::Error> {
     //let socket_client_server_rx = &socket.socket_client_rx;
-    let socket_client_server_tx = &socket.socket_client_tx;
+    let socket_client_server_tx = socket.new_client_socket().await;
     let (image_name, src) = com::recv(&socket.socket_client_rx).await?;
     let image_name = image_name.trim();
     println!("Received image name: {}", image_name);
@@ -114,7 +115,7 @@ pub async fn recv_image_chunk(
     image_data: Arc<Mutex<Vec<u8>>>,
 ) -> Result<Option<u32>, std::io::Error> {
     let socket_client_rx = socket.socket_client_rx.clone();
-    let socket_client_tx = socket.socket_client_server_tx.clone();
+    let socket_client_tx = socket.new_client_socket().await;
 
     let (buf, src) = com::recv_raw(&socket_client_rx).await?;
     let len = buf.len();
@@ -202,15 +203,15 @@ fn decode_received_image(encoded_image_path: &str) {
 
 //Sending
 pub async fn send_image_name(
-    socket: &Socket,
+    socket: Arc<Mutex<UdpSocket>>,
     image_name: &str,
     server_ip: Ipv4Addr,
     server_port: u16,
 ) -> Result<(), std::io::Error> {
     let dest = (server_ip, server_port);
-    com::send(&socket.socket_client_server_tx, image_name.to_string(), dest).await?;
+    com::send(&socket, image_name.to_string(), dest).await?;
 
-    let (ack, _) = com::recv(&socket.socket_client_server_tx).await?;
+    let (ack, _) = com::recv(&socket).await?;
     if ack.trim() != "NAME_ACK" {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -223,7 +224,7 @@ pub async fn send_image_name(
 }
 
 pub async fn send_image_chunk(
-    socket: &Socket,
+    socket: Arc<Mutex<UdpSocket>>,
     chunk_data: &[u8],
     chunk_index: u32,
     server_ip: Ipv4Addr,
@@ -237,9 +238,9 @@ pub async fn send_image_chunk(
     let dest = (server_ip, 6376);
     
     println!("size of chunk: {}", data_with_index.len());
-    com::send_vec(&socket.socket_client_server_tx, data_with_index, dest).await?;
+    com::send_vec(&socket, data_with_index, dest).await?;
     println!("Chunk {} sent.", chunk_index);
-    let (ack, _) = com::recv(&socket.socket_client_server_tx).await?;
+    let (ack, _) = com::recv(&socket).await?;
     let ack_index: u32 = ack
         .trim()
         .parse()
@@ -267,9 +268,9 @@ pub async fn send_image(
     config: &Config
 ) -> Result<(), std::io::Error> {
     let image_path = format!("./src/bin/client/raw_images/{}", image_name);
-
+    let socket = socket.new_client_socket().await;
+    let socket_clone = socket.clone();
     send_image_name(socket, &image_name, server_ip, server_port).await?;
-
     let mut file = File::open(image_path).await?;
     let mut file_contents = Vec::new();
     file.read_to_end(&mut file_contents).await?;
@@ -279,7 +280,7 @@ pub async fn send_image(
 
     for chunk in file_contents.chunks(chunk_size) {
         send_image_chunk(
-            socket,
+            socket_clone.clone(),
             chunk, // Current chunk
             chunk_index,
             server_ip,
@@ -289,11 +290,41 @@ pub async fn send_image(
 
         chunk_index += 1;
     }
-
+    
     // Send an "END" marker to signal the completion of the image transmission
     let dest = (server_ip, config.port_server_client_rx);
-    com::send(&socket.socket_client_server_tx, "END".to_string(), dest).await?;
+    com::send(&socket_clone, "END".to_string(), dest).await?;
     println!("END marker sent. Image transmission complete.");
+
+    Ok(())
+}
+
+pub async fn recv_image_client(
+    socket: &Socket,
+    config: &Config,
+) -> Result<(), std::io::Error> {
+    let (image_path, server_ip) = recv_image_name(socket, config).await?;
+    println!("Image name received: {:?}", image_path);
+
+    let image_data = Arc::new(Mutex::new(Vec::new()));
+    let mut expected_chunk_index = 0;
+
+    loop {
+        match recv_image_chunk(socket, config, expected_chunk_index, image_data.clone()).await? {
+            Some(next_chunk_index) => {
+                expected_chunk_index = next_chunk_index;
+            }
+            None => {
+                println!("Saving received image...");
+                let mut file = File::create(&image_path).await?;
+                file.write_all(&image_data.lock().await).await?;
+                println!("Image saved at: {:?}", image_path);
+                file.flush().await?;
+                decode_received_image(image_path.to_str().unwrap());
+                break;
+            }
+        }
+    }
 
     Ok(())
 }

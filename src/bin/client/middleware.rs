@@ -345,6 +345,7 @@ pub async fn p2p_send_image_name(socket: &Socket, client_address: (std::net::Ipv
 // Function for receiving an image name and responding with confirmation
 pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
     let socket_client_rx = &socket.socket_client_rx;
+    let socket_client_tx = &socket.socket_client_tx;
 
     loop {
         let (message, src) = com::recv(socket_client_rx).await?;
@@ -354,7 +355,7 @@ pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
             println!("Received image name '{}' from {}", message, src);
             println!("Echoing back image name '{}' to {}", message, src);
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
-                com::send(socket_client_rx, message.to_string(), (ipv4_src, src.port())).await?;
+                com::send(socket_client_tx, message.to_string(), (ipv4_src, src.port())).await?;
             } else {
                 eprintln!("Received non-IPv4 address: {}", src);
             }
@@ -366,3 +367,5 @@ pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
 
     Ok(())
 }
+
+
