@@ -1,17 +1,17 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 use walkdir::WalkDir;
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ImageData {
     image: String,
     views: u32,
 }
 
-fn create_json_for_images(path: &str, output_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn create_json_for_images(path: &str, output_file: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut image_data = Vec::new();
     let valid_extensions = ["jpg", "jpeg", "png"];
 

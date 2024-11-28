@@ -22,7 +22,7 @@ sysinfo = "*"
 bincode = "1.3"
 rand = "*"
 show-image = "0.13.0"
-
+walkdir = "2.3"
 
 
 [[bin]]

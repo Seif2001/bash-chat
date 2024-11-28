@@ -11,6 +11,7 @@ pub mod image_com;
 pub mod dos;
 pub mod api;
 mod image_processor;
+mod image_store;
 
 
 use crate::config::Config;
@@ -23,16 +24,17 @@ async fn main() -> io::Result<()> {
     let config = Config::new();
     let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx).await;
     let config = Config::new();
-    //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
-    dos::register_dos(&socket, &config).await?;
-    dos::request_dos(&socket, &config).await?;
-    let mut clients = dos::parse_clients("clients_request.json",&config.username);
-    dos::print_clients(clients);
-    let leader_ip:Ipv4Addr= middleware::recv_leader(&socket, &config).await;
-    println!("Before send images");
-    image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
-    println!("After send images");
-
+    // //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
+    // dos::register_dos(&socket, &config).await?;
+    // dos::request_dos(&socket, &config).await?;
+    // let mut clients = dos::parse_clients("clients_request.json",&config.username);
+    // dos::print_clients(clients);
+    // let leader_ip:Ipv4Addr= middleware::recv_leader(&socket, &config).await;
+    // println!("Before send images");
+    // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+    // println!("After send images");
+    image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
+    
     Ok(())
 }
 

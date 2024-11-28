@@ -40,8 +40,16 @@ pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::R
 }
 
 
-pub async fn request_image(socket: &Socket, config: &Config, image_name: String, client_ip: Ipv4Addr) -> io::Result<()>{
-    let request_message = "GET " + image_name;
-    middleware::p2p_send_image_request(socket, config, client_address, request_message);
-    image_com::receive_image(socket, config);
+// pub async fn request_image(socket: &Socket, config: &Config, image_name: String, client_ip: Ipv4Addr) -> io::Result<()>{
+//     let request_message = "GET " + image_name;
+//     middleware::p2p_send_image_request(socket, config, client_address, request_message);
+//     image_com::receive_image(socket, config);
+// }
+
+pub async fn request_list_images(socket: &Socket, config: &Config, client_ip: Ipv4Addr) -> io::Result<()>{
+    let request_message = "GET LIST";
+    middleware::p2p_send_image_request(socket, config, client_ip, request_message).await;
+    Ok(())
 }
+
+

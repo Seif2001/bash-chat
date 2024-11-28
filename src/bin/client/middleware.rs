@@ -370,4 +370,51 @@ pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
     Ok(())
 }
 
+pub async fn p2p_send_list_images_request(socket: &Socket, config: &Config, client_address: std::net::Ipv4Addr, message: &String) -> std::io::Result<()> {
+    let socket_client_tx = socket.new_client_socket().await;
+    
+
+    // Broadcast channel to signal when acknowledgment is received
+    let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
+
+    // Task to listen for acknowledgment
+    tokio::spawn({
+        let socket_client_tx = socket_client_tx.clone();
+        let ack_tx = ack_tx.clone();
+        async move {
+            loop {
+                let (response, src) = com::recv(&socket_client_tx).await.expect("Failed to receive message");
+                let response = response.trim();
+
+                if response == "ack_list" {
+                    println!("Received acknowledgment '{}' from {}", response, src);
+                    let _ = ack_tx.send(true); // Signal acknowledgment received
+                    break;
+                } else {
+                    println!("Received unexpected response '{}'", response);
+                }
+            }
+        }
+    });
+
+    // Retry loop to send the request
+    loop {
+        let dest = (client_address, config.port_client_image_request_rx);   
+        println!("Sending 'GET LIST' to {}:{}", dest.0, dest.1);
+        com::send(&socket_client_tx, message.to_string(), dest).await?;
+
+        tokio::select! {
+            _ = ack_rx.recv() => {
+                println!("Acknowledgment received, moving to next step.");
+                break;
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                println!("Timeout, resending 'GET LIST'...");
+            }
+        }
+    }
+
+    Ok(())
+}
+
 
