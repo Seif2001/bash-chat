@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 #[derive(Debug)]
 pub struct Config{
-    pub address_client_tx: String,
+    //pub address_client_tx: String,
     pub address_client_rx: String,
 
     pub address_election_tx: String,
@@ -112,7 +112,7 @@ impl Config {
         let interface_addr = Ipv4Addr::from_str(&env::var("INTERFACE_ADDRESS").expect("INTERFACE_ADDRESS not set")).expect("Invalid interface address");
 
         Config {
-            address_client_tx,
+            //address_client_tx,
             address_client_rx,
             address_client_elections_rx,
             address_election_tx,
