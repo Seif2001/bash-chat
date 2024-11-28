@@ -14,6 +14,19 @@ use std::net::Ipv4Addr;
 use std::io::Write;
 use std::io::Read;
 use serde_json::Value; // For deserializing the received JSON (if needed)
+use serde::{Serialize, Deserialize};
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use serde_json;
+
+// Define the Image struct and ImageList type (a vector of Image)
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Image {
+    pub image: String,
+    pub views: u32,
+}
+
+pub type ImageList = Vec<Image>;
 
 // async fn send_images_from_to(
 //     image_path: &str,
@@ -457,9 +470,10 @@ async fn write_to_file(filename: &str, content: &str) -> std::io::Result<()> {
 }
 
 
-pub async fn p2p_recv_images_list_request(socket: &Socket) -> std::io::Result<()> {
-    let client_rx = &socket.socket_client_request_images_rx;
-    let socket_client_tx = &socket.new_client_socket().await;
+
+pub async fn p2p_recv_images_list_request(socket: Arc<Mutex<Socket>>) -> std::io::Result<()> {
+    let client_rx = &socket.lock().await.socket_client_request_images_rx;
+
     loop {
         let (message, src) = com::recv(client_rx).await?;
         let message = message.trim();
@@ -469,18 +483,64 @@ pub async fn p2p_recv_images_list_request(socket: &Socket) -> std::io::Result<()
 
             let response = "ack_list";
             println!("Responding with ack to {}", src);
+
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
-                com::send(socket_client_tx, response.to_string(), (ipv4_src, src.port())).await?;
+                let dest = (ipv4_src, src.port()); // This is the destination address and port
+
+                let socket_clone = socket.clone();
+                let socket_client_tx_clone = socket.lock().await.new_client_socket().await;
+
+                tokio::spawn(async move {
+                    if let Err(e) = com::send(&socket_client_tx_clone, response.to_string(), dest).await {
+                        eprintln!("Error sending acknowledgment: {}", e);
+                    } else {
+                        if let Err(e) = p2p_send_images_list(&*socket_clone.lock().await, dest).await {
+                            eprintln!("Error sending images list: {}", e);
+                        }
+                    }
+                });
+
             } else {
                 eprintln!("Received non-IPv4 address: {}", src);
             }
-            break; // Exit loop after responding
         } else {
             println!("Received unexpected message '{}'", message);
         }
     }
 
     Ok(())
+}
+
+
+
+async fn parse_images_file() -> std::io::Result<String> {
+    let mut file = File::open("my_images.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    let images: ImageList = serde_json::from_str(&contents)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    let json_data = serde_json::to_string(&images)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    Ok(json_data)
+}
+
+pub async fn p2p_send_images_list(socket: &Socket, dest: (Ipv4Addr, u16)) -> std::io::Result<()> {
+
+    match parse_images_file().await {
+        Ok(json_data) => {
+            let socket_client_tx = &socket.new_client_socket().await;
+            com::send(socket_client_tx, json_data, dest).await?;
+            println!("Sent image list to {}:{}", dest.0, dest.1);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error parsing image file: {}", e);
+            Err(e)
+        }
+    }
 }
 
 
