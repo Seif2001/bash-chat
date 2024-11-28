@@ -9,11 +9,12 @@ use async_std::io::prelude::*;
 use std::convert::TryInto;
 use tokio::sync::Mutex;
 use tokio::time::{self, Duration};
+use tokio::net::UdpSocket;
 
 use image_processor::encode_image;
 
 //Receiving
-pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBuf, Ipv4Addr), std::io::Error> {
+pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBuf, (Ipv4Addr, u16), Arc<Mutex<UdpSocket>>), std::io::Error> {
     let socket_server_client_rx = &socket.socket_client_rx;
     let socket_server_client_tx = &socket.socket_client_tx;
     let (image_name, src) = com::recv(&socket_server_client_rx).await?;
@@ -36,8 +37,9 @@ pub async fn recv_image_name(socket: &Socket, config: &Config) -> Result<(PathBu
         src.port(),
     ); 
     println!("dest: {:?}", dest);
-    com::send(&socket_server_client_rx, "NAME_ACK".to_string(), (dest)).await?;
-    Ok((image_path.to_path_buf(), client_ip))
+    let socket = socket.new_server_socket().await;
+    com::send(&socket, "NAME_ACK".to_string(), (dest)).await?;
+    Ok((image_path.to_path_buf(), dest, socket))
 }
 
 pub async fn recv_image_chunk(
@@ -94,7 +96,7 @@ pub async fn receive_image(
     config: &Config,
 ) -> Result<(), std::io::Error> {
     // Step 1: Receive the image name
-    let (image_path, client_ip) = recv_image_name(socket, config).await?;
+    let (image_path, client_addr, socket_server) = recv_image_name(socket, config).await?;
     println!("Image name received: {:?}", image_path);
 
     // Prepare for receiving image chunks

@@ -1,6 +1,7 @@
 
 use mini_redis::server;
-use tokio::sync::broadcast;
+use tokio::net::UdpSocket;
+use tokio::sync::{broadcast, Mutex};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use crate::config::{self, Config};
@@ -77,9 +78,9 @@ use std::io::Read;
 // send to 3 servers
 
 pub async fn send_cloud(socket: &Socket, config: &Config, message: &String)  -> std::io::Result<()>  {
-    let socket_server_1 = &socket.socket_server_1;
-    let socket_server_2 = &socket.socket_server_2;
-    let socket_server_3 = &socket.socket_server_3;
+    let socket_server_1 = &socket.new_client_socket().await;
+    let socket_server_2 = &socket.new_client_socket().await;
+    let socket_server_3 = &socket.new_client_socket().await;
 
 
     // Verify destination addresses before sending

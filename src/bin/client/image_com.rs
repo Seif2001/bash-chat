@@ -207,11 +207,11 @@ pub async fn send_image_name(
     image_name: &str,
     server_ip: Ipv4Addr,
     server_port: u16,
-) -> Result<(), std::io::Error> {
+) -> Result<u16, std::io::Error> {
     let dest = (server_ip, server_port);
     com::send(&socket, image_name.to_string(), dest).await?;
 
-    let (ack, _) = com::recv(&socket).await?;
+    let (ack, src) = com::recv(&socket).await?;
     if ack.trim() != "NAME_ACK" {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -219,8 +219,17 @@ pub async fn send_image_name(
         ));
     }
 
+    let src_ip = match src {
+        std::net::SocketAddr::V4(addr) => addr.ip().clone(),
+        std::net::SocketAddr::V6(addr) => {
+            panic!("Expected Ipv4Addr but got Ipv6Addr: {}", addr)
+        }
+    };
+
+    let src_port = src.port();
+
     println!("Image name '{}' sent and acknowledged.", image_name);
-    Ok(())
+    Ok((src_port))
 }
 
 pub async fn send_image_chunk(
@@ -235,7 +244,7 @@ pub async fn send_image_chunk(
      // Append the chunk data
      data_with_index.extend_from_slice(chunk_data);
      
-    let dest = (server_ip, 6376);
+    let dest = (server_ip, server_port);
     
     println!("size of chunk: {}", data_with_index.len());
     com::send_vec(&socket, data_with_index, dest).await?;
@@ -270,7 +279,7 @@ pub async fn send_image(
     let image_path = format!("./src/bin/client/raw_images/{}", image_name);
     let socket = socket.new_client_socket().await;
     let socket_clone = socket.clone();
-    send_image_name(socket, &image_name, server_ip, server_port).await?;
+    let server_port  = send_image_name(socket, &image_name, server_ip, server_port).await?;
     let mut file = File::open(image_path).await?;
     let mut file_contents = Vec::new();
     file.read_to_end(&mut file_contents).await?;
@@ -292,7 +301,7 @@ pub async fn send_image(
     }
     
     // Send an "END" marker to signal the completion of the image transmission
-    let dest = (server_ip, config.port_server_client_rx);
+    let dest = (server_ip, server_port);
     com::send(&socket_clone, "END".to_string(), dest).await?;
     println!("END marker sent. Image transmission complete.");
 
@@ -320,7 +329,7 @@ pub async fn recv_image_client(
                 file.write_all(&image_data.lock().await).await?;
                 println!("Image saved at: {:?}", image_path);
                 file.flush().await?;
-                decode_received_image(image_path.to_str().unwrap());
+                //decode_received_image(image_path.to_str().unwrap());
                 break;
             }
         }
