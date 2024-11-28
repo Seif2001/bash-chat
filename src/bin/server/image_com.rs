@@ -136,7 +136,7 @@ pub async fn receive_image(
 
                 //send the encoded image to the client
                 println!("Sending the encoded image to the client...");
-                send_image(socket, Path::new(&output_image_path), client_ip, config.port_client_rx, 1020).await?;
+                send_image(socket, Path::new(&output_image_path), client_addr.0, client_addr.1, 1020).await?;
                 println!("Encoded image sent to the client.");
                 break;
             }

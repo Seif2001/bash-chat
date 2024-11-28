@@ -22,9 +22,10 @@ use crate::socket::Socket;
 async fn main() -> io::Result<()> {
     let config = Config::new();
     let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx, config.address_client_server_tx,config.address_client_dos_tx,config.address_client_dos_rx).await;
-    let socket = Arc::new(socket);
+    // let socket = Arc::new(socket);
+    // let config_arc = Arc::new(config); 
     
-    api::image_com_server(Arc::new(socket), Arc::new(config)).await.expect("Failed to start image com server");
+    // api::image_com_server(socket, config_arc).await.expect("Failed to start image com server");
 
     Ok(())
 }
