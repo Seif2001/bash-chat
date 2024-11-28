@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use mini_redis::client;
 use tokio::task;
 use std::net::{SocketAddr, UdpSocket, Ipv4Addr};
 use std::sync::Arc;
@@ -34,7 +35,8 @@ async fn main() -> io::Result<()> {
     // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
     // println!("After send images");
     image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
-    
+    let client_ip = Ipv4Addr::new(10, 7, 16, 43);
+    api::request_list_images(&socket, &config, client_ip).await?;
     Ok(())
 }
 
