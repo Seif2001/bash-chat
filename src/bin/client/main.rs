@@ -26,6 +26,7 @@ async fn main() -> io::Result<()> {
     // let config_arc = Arc::new(config); 
     
     // api::image_com_server(socket, config_arc).await.expect("Failed to start image com server");
+    image_com::send_images_from_to(&socket, &config).await.expect("Failed to send images");
 
     Ok(())
 }
