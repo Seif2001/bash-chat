@@ -270,8 +270,8 @@ pub async fn p2p_recv_image_request(socket: &Socket, config: &Config) -> std::io
     loop {
         let (message, src) = com::recv(client_rx).await?;
         let message = message.trim();
-        let image_name = message.trim_start_matches("GET H ").trim().to_string();
         if message.starts_with("GET H ") {
+            let image_name = message.trim_start_matches("GET H ").trim().to_string();
             println!("Received high image Request from {}", src);
             if image_name.is_empty() {
                 println!("No image name provided");
@@ -292,6 +292,8 @@ pub async fn p2p_recv_image_request(socket: &Socket, config: &Config) -> std::io
             // break; there is no breaking man we keep listeening forever and ever and ever
         } 
         else if message.starts_with("GET L ") {
+            let image_name = message.trim_start_matches("GET L ").trim().to_string();
+
             println!("Received low image Request from {}", src);
             if image_name.is_empty() {
                 println!("No image name provided");
@@ -299,11 +301,14 @@ pub async fn p2p_recv_image_request(socket: &Socket, config: &Config) -> std::io
             }
             let response = "ack_request";
             let sending_socket = socket.new_client_socket().await;
+
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
                 let image_path = Path::new(&config.client_raw_images_dir).join(&image_name);
-                let low_image_path = Path::new(&config.client_raw_images_dir).join(&image_name);
-                image_processor::create_small_image(image_path.display().to_string(), low_image_path.display().to_string()); //add low image directory
+                let low_image_path = Path::new(&config.client_low_quality_images_dir).join(&image_name);
+                println!("Creating low image: {}", low_image_path.display());
+                println!("input [ath: {}", image_path.display());
+                image_processor::resize_image(image_path.to_str().unwrap(), low_image_path.to_str().unwrap()); //add low image directory
                 let low_path = config.client_low_quality_images_dir.clone();
                 image_com::send_image(socket, &image_name, &low_path, ipv4_src, src.port(), 1020, config).await?;
             } else {

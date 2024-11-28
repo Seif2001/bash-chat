@@ -1,13 +1,19 @@
 extern crate steganography;
+use std::path::Path;
+use std::path::PathBuf;
+use std::io::BufReader;
+use image::ImageFormat;
 use steganography::decoder::*;
 use steganography::encoder::*;
 use steganography::util::*;
 use show_image::{create_window, ImageInfo, ImageView};
+use image::{DynamicImage, FilterType};
+use std::fs::{self, File};
+use std::io::Error;
 
 // use image::{DynamicImage, RgbaImage, Rgba, ImageBuffer, GenericImageView};
 // only the GenericImageView is needed
 use image::GenericImageView;
-use std::fs::File;
 use std::fs::metadata;
 use std::io::Read;
 // use std::cmp::min;
@@ -59,11 +65,7 @@ pub fn decode_image(path_input: String, output_file: String) {
     println!("Decoding complete. The file has been recovered to {}", output_file);
 }
 
-pub fn create_small_image(path_input: String,output_file: String){
-    let img = image::open(&path_input).unwrap();
-    let img = img.thumbnail(100, 100);
-    img.save(output_file).unwrap();
-}
+
 
 pub fn display_image(image_path: &str) {
     if let Ok(img) = image::open(image_path) {
@@ -77,5 +79,38 @@ pub fn display_image(image_path: &str) {
         window.set_image("Image", image_view).unwrap();
     } else {
         println!("Failed to load image.");
+    }
+}
+
+
+pub fn resize_image(input_path: &str, output_dir: &str) -> Result<(), Error> {
+    // Create the output directory if it doesn't exist
+    
+    // Open the image file from the given input path
+    let file = File::open(input_path)?;
+
+    // Create a BufReader around the file
+    let reader = BufReader::new(file);
+
+    // Try to load the image
+    let image = match image::load(reader, ImageFormat::JPEG) {
+        Ok(img) => img,
+        Err(e) => {
+            eprintln!("Error loading image: {}", e);
+            return Err(Error::new(std::io::ErrorKind::Other, e));
+        }
+    };
+
+    // Resize the image to 100x100
+    let resized_img = image.resize(100, 100, FilterType::Lanczos3);
+
+    match resized_img.save(output_dir) {
+        Ok(_) => {
+            Ok(())
+        },
+        Err(e) => {
+            eprintln!("Failed to save resized image: {}", e);
+            Err(e)
+        }
     }
 }
