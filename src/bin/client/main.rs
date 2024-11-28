@@ -22,7 +22,7 @@ use crate::socket::Socket;
 
 async fn main() -> io::Result<()> {
     let config = Config::new();
-    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx).await;
+    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
     let config = Config::new();
     // //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
     // dos::register_dos(&socket, &config).await?;

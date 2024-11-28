@@ -31,6 +31,7 @@ pub struct Config{
     pub port_client_elections_rx: u16,
     pub address_client_leader_rx: String,
     pub port_server_rx: u16,
+    pub address_client_image_request_rx: String,
 
     //pub address_client_server_tx: String,
 
@@ -82,7 +83,7 @@ impl Config {
         let server_ip_1 = env::var("SERVER_IP_1").expect("SERVER_IP_1 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
         let server_ip_2 = env::var("SERVER_IP_2").expect("SERVER_IP_2 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
         let server_ip_3 = env::var("SERVER_IP_3").expect("SERVER_IP_3 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
-
+        let address_client_image_request_rx = format!("{}{}", server_ip, port_client_image_request_rx);
         let username = env::var("CLIENT_USERNAME").expect("CLIENT_USERNAME not set").parse::<String>().expect("Invalid username");
 
 
@@ -110,6 +111,7 @@ impl Config {
             address_client_leader_rx,
             port_server_rx,
             port_client_image_request_rx,
+            address_client_image_request_rx,
             //address_client_server_tx,
             username
 

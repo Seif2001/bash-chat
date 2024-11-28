@@ -196,3 +196,6 @@ pub fn print_clients(clients: Vec<Client>) {
         println!("Client {}. {}", client.id, client.username);
     }
 }
+
+
+

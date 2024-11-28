@@ -4,7 +4,7 @@ use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::socket::Socket;
+use crate::socket::{self, Socket};
 use crate::{image_com, middleware};
 
 pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::Result<()> {
@@ -46,9 +46,25 @@ pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::R
 //     image_com::receive_image(socket, config);
 // }
 
-pub async fn request_list_images(socket: &Socket, config: &Config, client_ip: Ipv4Addr) -> io::Result<()>{
-    let request_message = "GET LIST";
-    middleware::p2p_send_image_request(socket, config, client_ip, request_message).await;
+pub async fn request_list_images(socket: &Socket, config: &Config, client_ip: Ipv4Addr) -> io::Result<()> {
+    let request_message = "GET LIST".to_string();
+    let socket_tx_rx = socket.new_client_socket().await;
+    let socket_tx_rx_clone = Arc::clone(&socket_tx_rx);
+    // Try to send the image list request and handle errors
+    match middleware::p2p_send_list_images_request(socket, config, client_ip, &request_message, socket_tx_rx).await {
+        Ok(_) => {
+            println!("Image list request sent successfully. Now waiting for the list of images.");
+
+            // If sending was successful, try to receive the image list
+            if let Err(e) = middleware::p2p_recv_list_images(socket_tx_rx_clone).await {
+                eprintln!("Error receiving list of images: {}", e);
+            }
+        },
+        Err(e) => {
+            eprintln!("Error sending image list request: {}", e);
+        }
+    }
+
     Ok(())
 }
 
