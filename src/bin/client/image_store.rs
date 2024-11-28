@@ -144,9 +144,54 @@ fn display_images_data(json_file: &str) {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let path = "./images";
-    let output_file = "output.json";
-    create_json_for_images(path, output_file)?;
+fn update_image_json(path: &str, json_file: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let file_content = match fs::read_to_string(json_file) {
+        Ok(content) => content,
+        Err(_) => {
+            println!("JSON file not found or could not be read.");
+            return Ok(());
+        }
+    };
+    let mut image_data: Vec<ImageData> = match serde_json::from_str(&file_content) {
+        Ok(data) => data,
+        Err(_) => {
+            println!("Failed to parse JSON. Starting with a new list.");
+            Vec::new()
+        }
+    };
+    let mut current_images = Vec::new();
+    let valid_extensions = ["jpg", "jpeg", "png"];
+    for entry in WalkDir::new(path) {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_file() {
+            if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+                if valid_extensions.contains(&extension.to_lowercase().as_str()) {
+                    if let Some(file_name) = path.file_name().and_then(|f| f.to_str()) {
+                        current_images.push(file_name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    image_data.retain(|entry| current_images.contains(&entry.image));
+    for image in current_images {
+        if !image_data.iter().any(|entry| entry.image == image) {
+            image_data.push(ImageData {
+                image: image.clone(),
+                views: 5, // New images start with 5 views
+            });
+        }
+    }
+    let updated_json = match serde_json::to_string_pretty(&image_data) {
+        Ok(json) => json,
+        Err(_) => {
+            println!("Failed to serialize updated JSON.");
+            return Ok(());
+        }
+    };
+
+    fs::write(json_file, updated_json)?;
     Ok(())
 }
