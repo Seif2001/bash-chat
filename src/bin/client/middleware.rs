@@ -220,9 +220,9 @@ pub async fn recv_leader(socket: &Socket, config: &Config) -> Ipv4Addr {
 
 //P2P Communication
 // Function for sending an "image Request" to Client 2
-pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
+pub async fn p2p_send_image_request(socket: &Socket, config:&Socket, client_address: Ipv4Addr, message: &String) -> std::io::Result<()> {
     let socket_client_tx = &socket.socket_client_tx;
-    let message = "image Request";
+    
 
     // Broadcast channel to signal when acknowledgment is received
     let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
@@ -236,8 +236,8 @@ pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::
                 let (response, src) = com::recv(&socket_client_tx).await.expect("Failed to receive message");
                 let response = response.trim();
 
-                if response == "Sample Images" {
-                    println!("Received acknowledgment 'Sample Images' from {}", src);
+                if response == "ack_request" {
+                    println!("Received acknowledgment {}", src);
                     let _ = ack_tx.send(true); // Signal acknowledgment received
                     break;
                 } else {
@@ -249,8 +249,9 @@ pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::
 
     // Retry loop to send the request
     loop {
-        println!("Sending 'image Request' to {}:{}", client_address.0, client_address.1);
-        com::send(socket_client_tx, message.to_string(), client_address).await?;
+        println!("Sending 'image Request' to {}:{}", client_address, config.port_client_image_request_rx);
+        let dest = (client_address, config.port_client_image_request_rx);
+        com::send(socket_client_tx, message.to_string(), dest).await?;
 
         tokio::select! {
             _ = ack_rx.recv() => {

@@ -17,6 +17,7 @@ pub struct Config{
     pub port_client_dos_rx:u16,
     pub port_client_rx: u16,
     pub port_server_client_rx: u16,
+    pub port_client_image_request_rx:u16,
 
     pub address_client_dos_tx:String,
     pub address_client_dos_rx:String,
@@ -51,6 +52,7 @@ impl Config {
         //let port_client_server_tx = env::var("PORT_CLIENT_SERVER_TX").expect("PORT_CLIENT_SERVER_TX not set").parse::<u16>().expect("Invalid client port");
         let port_server_client_rx = env::var("PORT_SERVER_CLIENT_RX").expect("PORT_SERVER_CLIENT_RX not set").parse::<u16>().expect("Invalid server port");
         let port_server_rx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
+        let port_client_image_request_rx = env::var("PORT_CLIENT_IMAGE_REQUEST_RX").expect("PORT_CLIENT_IMAGE_REQUEST_RX not set").parse::<u16>().expect("Invalid server port");
         //let port_server_tx = env::var("PORT_SERVER_RX").expect("PORT_SERVER_RX not set").parse::<u16>().expect("Invalid server port");
 
         
@@ -107,6 +109,7 @@ impl Config {
             port_client_elections_rx,
             address_client_leader_rx,
             port_server_rx,
+            port_client_image_request_rx,
             //address_client_server_tx,
             username
 
