@@ -220,7 +220,7 @@ pub async fn recv_leader(socket: &Socket, config: &Config) -> Ipv4Addr {
 
 //P2P Communication
 // Function for sending an "image Request" to Client 2
-pub async fn p2p_send_image_request(socket: &Socket, config:&Socket, client_address: Ipv4Addr, message: &String) -> std::io::Result<()> {
+pub async fn p2p_send_image_request(socket: &Socket, config:&Config, client_address: Ipv4Addr, message: &String) -> std::io::Result<()> {
     let socket_client_tx = &socket.socket_client_tx;
     
 
