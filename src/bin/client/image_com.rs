@@ -18,7 +18,8 @@ use image_processor::decode_image;
 
 pub async fn send_images_from_to(
     image_path: &str,
-    mut num_images: usize,
+    // mut num_images: usize,
+    file_name: &str,
     client_order: u32,
     server_ip: Ipv4Addr,
     server_port: u16,
@@ -30,7 +31,8 @@ pub async fn send_images_from_to(
     println!(
         "Client {} is sending {} images from '{}' to addr {}:{}",
         client_order, 
-        num_images,
+        // num_images,
+        file_name,
         image_path, 
         server_ip,
         server_port
@@ -38,18 +40,18 @@ pub async fn send_images_from_to(
     println!("********************************************************************************");
 
 
-    let mut read_dir = read_dir(image_path).await?;
-    while let Some(entry) = read_dir.next().await {
-        if num_images == 0 {
-            break;
-        }
-        num_images -= 1;
+    // let mut read_dir = read_dir(image_path).await?;
+    // while let Some(entry) = read_dir.next().await {
+    //     if num_images == 0 {
+    //         break;
+    //     }
+    //     num_images -= 1;
 
-        let entry = entry?;
-        let path = entry.path();
+        // let entry = entry?;
+        // let path = entry.path();
 
-        if path.is_file().await {
-            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+        // if path.is_file().await {
+        //     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                 
                 println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
                 
@@ -68,9 +70,9 @@ pub async fn send_images_from_to(
                 // Receive image
                 let new_path = PathBuf::from(config.client_encoded_images_dir.clone());
                 receive_image(&send_socket, config, send_socket_new, new_path).await?;
-            }
-        }
-    }
+        //     }
+        // }
+    // }
 
     println!("\nClient {} completed sending images to addr {}.", client_order, server_ip);
     println!("----------------------------------------------------------------------------");

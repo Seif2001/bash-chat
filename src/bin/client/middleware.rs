@@ -297,6 +297,11 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
                 let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
                 let path = config.client_encoded_images_dir.clone();
+                send_cloud(&socket, &config,&"START".to_string()).await?;
+                let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                println!("Before send images");
+                image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+                println!("After send images");
                 // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
                 image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
 
