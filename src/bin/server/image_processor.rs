@@ -65,3 +65,4 @@ pub fn create_small_image(path_input: String,output_file: String){
     let img = img.thumbnail(100, 100);
     img.save(output_file).unwrap();
 }
+

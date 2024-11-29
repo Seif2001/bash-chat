@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::socket::Socket;
 
 #[tokio::main]
-#[show_image::main]
+//#[show_image::main]
 
 async fn main() -> io::Result<()> {
     let config = Config::new();
@@ -37,6 +37,19 @@ async fn main() -> io::Result<()> {
     image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
     let client_ip = Ipv4Addr::new(10, 7, 16, 43);
     api::request_list_images(&socket, &config, client_ip).await?;
+
+    // Client 2 Config
+    // Respond to "image Request"
+    // middleware::p2p_recv_image_request(&socket, &config).await?;
+    // let sending_socket = socket.new_client_socket().await;
+    // let image_name = "image3.png";
+    // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
+    // let client_port = config.port_client_image_request_rx;
+    // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
+    // // Respond to "Image Name"
+    middleware::p2p_recv_image_request(&socket, &config).await?;
+
+
     Ok(())
 }
 

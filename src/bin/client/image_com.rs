@@ -61,12 +61,13 @@ pub async fn send_images_from_to(
                 // // Receive leader's address from the server
                 // let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
                 // println!(" --  received name ack to begin sending: {}", ack); // already inside the receive leader function
-
-                let send_socket_new = send_image(&send_socket, file_name, server_ip, server_port, 1020, &config).await?;
+                let path = config.client_raw_images_dir.clone();
+                let send_socket_new = send_image(&send_socket, file_name, &path, server_ip, server_port, 1020, &config).await?;
 
 
                 // Receive image
-                receive_image(&send_socket, config, send_socket_new).await?;
+                let new_path = PathBuf::from(config.client_encoded_images_dir.clone());
+                receive_image(&send_socket, config, send_socket_new, new_path).await?;
             }
         }
     }
@@ -78,15 +79,13 @@ pub async fn send_images_from_to(
     Ok(())
 }
 //Receiving
-pub async fn recv_image_name(sending_socket: Arc<Mutex<UdpSocket>>, config: &Config) -> Result<(PathBuf, Ipv4Addr), std::io::Error> {
+pub async fn recv_image_name(sending_socket: Arc<Mutex<UdpSocket>>, config: &Config) -> Result<(String, Ipv4Addr), std::io::Error> {
     //let socket_client_server_rx = &socket.socket_client_rx;
     let socket_client_server_tx = sending_socket.clone();
     let (image_name, src) = com::recv(&socket_client_server_tx).await?;
-    let image_name = image_name.trim();
+    let image_name = image_name.trim().to_string();
     println!("Received image name: {}", image_name);
 
-    let image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
-    println!("Image path: {:?}", image_path);
     let server_ip = match src {
         std::net::SocketAddr::V4(addr) => *addr.ip(),
         std::net::SocketAddr::V6(addr) => {
@@ -105,7 +104,7 @@ pub async fn recv_image_name(sending_socket: Arc<Mutex<UdpSocket>>, config: &Con
 
     com::send(&socket_client_server_tx, "NAME_ACK".to_string(), dest).await?;
     println!("NAME_ACK sent.");
-    Ok((image_path.to_path_buf(), server_ip))
+    Ok((image_name.to_string(), server_ip))
 }
 
 pub async fn recv_image_chunk(
@@ -160,9 +159,11 @@ pub async fn recv_image_chunk(
 pub async fn receive_image(
     socket: &Socket,
     config: &Config,
-    sending_socket: Arc<Mutex<UdpSocket>>
+    sending_socket: Arc<Mutex<UdpSocket>>,
+    path: PathBuf
 ) -> Result<(), std::io::Error> {
-    let (image_path, server_ip) = recv_image_name(sending_socket.clone(), config).await?;
+    let (image_name, server_ip) = recv_image_name(sending_socket.clone(), config).await?;
+    let image_path = path.as_path().join(&image_name);
     println!("Image name received: {:?}", image_path);
 
     let image_data = Arc::new(Mutex::new(Vec::new()));
@@ -179,7 +180,7 @@ pub async fn receive_image(
                 file.write_all(&image_data.lock().await).await?;
                 println!("Image saved at: {:?}", image_path);
                 file.flush().await?;
-                decode_received_image(image_path.to_str().unwrap());
+                // decode_received_image(image_path.to_str().unwrap());
                 break;
             }
         }
@@ -272,12 +273,13 @@ pub async fn send_image_chunk(
 pub async fn send_image(
     socket: &Socket,
     image_name: &str,
+    path: &str,
     server_ip: Ipv4Addr,
     server_port: u16,
     chunk_size: usize,
     config: &Config
 ) -> Result<(Arc<Mutex<UdpSocket>>), std::io::Error> {
-    let image_path = format!("./src/bin/client/raw_images/{}", image_name);
+    let image_path = format!("{}/{}", path, image_name);
     let socket = socket.new_client_socket().await;
     let socket_clone = socket.clone();
     let server_port  = send_image_name(socket, &image_name, server_ip, server_port).await?;
