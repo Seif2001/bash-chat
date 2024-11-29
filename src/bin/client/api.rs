@@ -86,14 +86,17 @@ pub async fn request_image(
     } else {
         format!("GET L {}", image_name)
     };
-
+    let path_ = if !is_high {
+        async_std::path::PathBuf::from(config.client_low_quality_images_dir.clone())
+    } else {
+        async_std::path::PathBuf::from(config.client_encoded_images_dir.clone())
+    };
     // Attempt to send the image request
     //low quality
-    let low_path = async_std::path::PathBuf::from(config.client_low_quality_images_dir.clone());
-    match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip,client_port, &request_message, low_path.clone()).await {
+    match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip,client_port, &request_message, path_.clone()).await {
         Ok(_) => {
             // If the request is successful, proceed to sending the image
-            image_com::receive_image(socket, config, sending_socket, low_path).await?;
+            image_com::receive_image(socket, config, sending_socket, path_).await?;
             Ok(())
         }
         Err(e) => {
