@@ -45,7 +45,7 @@ async fn main() -> io::Result<()> {
     // let image_name = "image3.png";
     // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
     // let client_port = config.port_client_image_request_rx;
-     let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, "test",client_port, false).await;
+    //let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, "test",client_port, false).await;
     // // Respond to "Image Name"
     middleware::p2p_recv_request(&socket, &config).await?;
 

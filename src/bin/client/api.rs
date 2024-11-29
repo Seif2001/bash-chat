@@ -76,9 +76,10 @@ pub async fn request_image(
     socket: &Socket,
     config: &Config,
     sending_socket: Arc<Mutex<UdpSocket>>,
+    sending_socket_server: Arc<Mutex<UdpSocket>>,
     image_name: String,
     client_ip: Ipv4Addr,
-    client_username: &Str,
+    client_username: &str,
     client_port: u16,
     is_high: bool
 ) -> io::Result<()> {
@@ -91,30 +92,30 @@ pub async fn request_image(
     // Attempt to send the image request
     //low quality
     let low_path = async_std::path::PathBuf::from(config.client_low_quality_images_dir.clone());
+    let low_path_2 = async_std::path::PathBuf::from(config.client_low_quality_images_dir.clone());
     match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip,client_port, &request_message, low_path.clone()).await {
         Ok(_) => {
             // If the request is successful, proceed to sending the image
             image_com::receive_image(socket, config, sending_socket, low_path).await?;
-            Ok(())
         }
         Err(e) => {
             // If there is an error in sending the request, handle the error
             eprintln!("Failed to send image request: {}", e);
             // Optionally, you can try to recover, retry, or just return the error
-            Err(e)
         }
     }
-    match middleware::p2p_history_table_update(socket, sending_socket.clone(), config, client_ip,client_port, &config.username, client_username,low_path.clone()).await {
+    match middleware::p2p_history_table_update(socket, sending_socket_server.clone(), config, client_ip,client_port, &config.username, &client_username.to_string(),low_path_2.clone()).await {
         Ok(_) => {
             // If the request is successful, proceed to sending the image
-            Ok(())
+            // Ok(())
         }
         Err(e) => {
             // If there is an error in sending the request, handle the error
             eprintln!("Failed to send history update: {}", e);
             // Optionally, you can try to recover, retry, or just return the error
-            Err(e)
+           // Err(e)
         }
     }
+    Ok(())
 }
 

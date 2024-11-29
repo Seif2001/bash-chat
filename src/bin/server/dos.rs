@@ -62,9 +62,9 @@ pub async fn send_ack( socket: &Socket, config: &Config, client_addr: Ipv4Addr) 
 }
 
 
-pub async fn send_ack_random(client_addr: Ipv4Addr) -> std::io::Result<()> {
-    let dest = (client_addr, client_addr.port());
-    let socket = &socket::new_client_socket().await();
+pub async fn send_ack_random(client_addr: Ipv4Addr,client_port:u16) -> std::io::Result<()> {
+    let dest = (client_addr, client_port);
+    let socket = &socket::new_server_socket().await;
     com::send(&socket, "ACK".to_string(), dest).await
 }
 
@@ -157,6 +157,7 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
             println!("Waiting for dos message from client");
             let (message, client_addr) = com::recv(&socket_client).await.expect("Failed to receive message");
             let message = message.trim();
+            let client_port:u16 = client_addr.port();
             let client_addr = match client_addr.ip() {
                 std::net::IpAddr::V4(addr) => addr,
                 _ => panic!("Expected an IPv4 address"),
@@ -196,11 +197,11 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
                 }
                 let servers_clone = Arc::clone(&servers);
                 if find_leader(servers_clone).await == my_id{
-                    update_history_table(data).await();
+                    update_history_table(data).await;
                     let socket_clone = Arc::clone(&socket);
                     let config_clone = Arc::clone(&config);
                     let _ = send_history(&socket_clone, &config_clone);
-                    let _ = send_ack_random(client_addr).await;
+                    let _ = send_ack_random(client_addr,client_port).await;
                 }
             }
             else if message.starts_with("DELETE ") {
@@ -212,11 +213,11 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
                 }
                 let servers_clone = Arc::clone(&servers);
                 if find_leader(servers_clone).await == my_id{
-                    delete_history_table(data).await();
+                    delete_history_table(data).await;
                     let socket_clone = Arc::clone(&socket);
                     let config_clone = Arc::clone(&config);
                     let _ = send_history(&socket_clone, &config_clone);
-                    let _ = send_ack_random(client_addr).await;
+                    let _ = send_ack_random(client_addr,client_port).await;
                 }
             }      
         }
@@ -313,6 +314,8 @@ pub async fn delete_history_table(data: String) {
     let image_name = parts[2].to_string();
 
     let file_path = "history.json";
+
+    // Read the existing history from the file
     let mut history = if let Ok(file) = File::open(file_path) {
         let reader = BufReader::new(file);
         from_reader(reader).unwrap_or_else(|_| Vec::new())
@@ -320,12 +323,20 @@ pub async fn delete_history_table(data: String) {
         Vec::new()
     };
 
-    history.retain(|entry| !(entry.image == image_name && entry.request_from == from_username && entry.request_to == to_username));
+    // Explicitly specify that `entry` is of type `HistoryEntry` in the closure
+    history.retain(|entry: &HistoryEntry| {
+        !(entry.request_from == from_username
+            && entry.request_to == to_username
+            && entry.image == image_name)
+    });
 
+    // Write the updated history back to the file
     let file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path)
         .expect("Unable to open or create the file");
     let writer = BufWriter::new(file);
     to_writer(writer, &history).expect("Failed to write to file");
+
+    println!("Deleted entry with from_username: {}, to_username: {}, image_name: {}", from_username, to_username, image_name);
 }
 
 pub async fn send_history( socket: &Socket, config:&Config) -> std::io::Result<()> {
