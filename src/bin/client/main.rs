@@ -21,8 +21,14 @@ use crate::socket::Socket;
 
 async fn main() -> io::Result<()> {
     let config = Config::new();
-    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
-    let config = Config::new();
+
+    image_processor::append_views("/home/bash-chat/src/bin/client/encoded_images/encoded_image3.png".to_string(), "test.png".to_string(),12);
+
+    println!("{:?}",image_processor::get_views("test.png".to_string()));
+    image_processor::decode_image("test.png".to_string(), "test1.png".to_string());
+    // let config = Config::new();
+    // let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
+    // let config = Config::new();
     //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
     // dos::register_dos(&socket, &config).await?;
     // dos::request_dos(&socket, &config).await?;
@@ -36,11 +42,11 @@ async fn main() -> io::Result<()> {
     // Client 2 Config
     // Respond to "image Request"
     // middleware::p2p_recv_image_request(&socket, &config).await?;
-    let sending_socket = socket.new_client_socket().await;
-    let image_name = "image3.png";
-    let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-    let client_port = config.port_client_image_request_rx;
-    let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
+    // let sending_socket = socket.new_client_socket().await;
+    // let image_name = "image3.png";
+    // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
+    // let client_port = config.port_client_image_request_rx;
+    // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
     // Respond to "Image Name"
     // middleware::p2p_recv_image_name(&socket).await?;
 
