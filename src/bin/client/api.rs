@@ -78,6 +78,7 @@ pub async fn request_image(
     sending_socket: Arc<Mutex<UdpSocket>>,
     image_name: String,
     client_ip: Ipv4Addr,
+    client_username: &Str,
     client_port: u16,
     is_high: bool
 ) -> io::Result<()> {
@@ -99,6 +100,18 @@ pub async fn request_image(
         Err(e) => {
             // If there is an error in sending the request, handle the error
             eprintln!("Failed to send image request: {}", e);
+            // Optionally, you can try to recover, retry, or just return the error
+            Err(e)
+        }
+    }
+    match middleware::p2p_history_table_update(socket, sending_socket.clone(), config, client_ip,client_port, &config.username, client_username,low_path.clone()).await {
+        Ok(_) => {
+            // If the request is successful, proceed to sending the image
+            Ok(())
+        }
+        Err(e) => {
+            // If there is an error in sending the request, handle the error
+            eprintln!("Failed to send history update: {}", e);
             // Optionally, you can try to recover, retry, or just return the error
             Err(e)
         }

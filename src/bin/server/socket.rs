@@ -77,3 +77,9 @@ impl Socket{
     
     
 }
+
+pub async fn new_server_socket() -> Arc<Mutex<UdpSocket>>{
+    // bind random available port
+    let socket = Arc::new(Mutex::new(UdpSocket::bind("0.0.0.0:0").await.expect("Error binding")));
+    socket
+}

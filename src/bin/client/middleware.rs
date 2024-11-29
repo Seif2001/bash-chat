@@ -530,6 +530,93 @@ pub async fn p2p_send_images_list(socket_send: &Arc<Mutex<UdpSocket>>, dest: (Ip
     }
 }
 
+pub async fn p2p_history_table_update(socket: &Socket,sending_socket: Arc<Mutex<UdpSocket>>,config: &Config,client_address: Ipv4Addr,client_port: u16,from_username: &String,to_username: &String, path: PathBuf) -> std::io::Result<()> {
+    let image_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let message = format!("UPDATE {} {} {}", from_username, to_username, image_name);
+
+    let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
+
+    tokio::spawn({
+        let sending_socket = sending_socket.clone();
+        let ack_tx = ack_tx.clone();
+        async move {
+            loop {
+                let (response, src) = com::recv(&sending_socket).await.expect("Failed to receive message");
+                let response = response.trim();
+
+                if response == "ACK" {
+                    // Send ACK to indicate receipt
+                    let _ = ack_tx.send(true);
+                    break;
+                } else {
+                    println!("Received unexpected response '{}'", response);
+                }
+            }
+        }
+    });
+
+    loop {
+        let dest = (client_address, client_port);
+        com::send(&sending_socket, message.clone(), dest).await?;
+
+        tokio::select! {
+            _ = ack_rx.recv() => {
+                println!("Acknowledgment received, history updated.");
+                image_com::receive_image(socket, config, sending_socket, path).await?;
+                break;
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                println!("Timeout, resending 'history update'...");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn p2p_history_table_delete(socket: &Socket,sending_socket: Arc<Mutex<UdpSocket>>,config: &Config,client_address: Ipv4Addr,client_port: u16,from_username: &String,to_username: &String, path: PathBuf) -> std::io::Result<()> {
+    let image_name = path.file_name().unwrap_or_default().to_string_lossy();
+    let message = format!("DELETE {} {} {}", from_username, to_username, image_name);
+
+    let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
+
+    tokio::spawn({
+        let sending_socket = sending_socket.clone();
+        let ack_tx = ack_tx.clone();
+        async move {
+            loop {
+                let (response, src) = com::recv(&sending_socket).await.expect("Failed to receive message");
+                let response = response.trim();
+
+                if response == "ACK" {
+                    // Send ACK to indicate receipt
+                    let _ = ack_tx.send(true);
+                    break;
+                } else {
+                    println!("Received unexpected response '{}'", response);
+                }
+            }
+        }
+    });
+
+    loop {
+        let dest = (client_address, client_port);
+        com::send(&sending_socket, message.clone(), dest).await?;
+
+        tokio::select! {
+            _ = ack_rx.recv() => {
+                println!("Acknowledgment received, history updated.");
+                image_com::receive_image(socket, config, sending_socket, path).await?;
+                break;
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
+                println!("Timeout, resending 'history update'...");
+            }
+        }
+    }
+
+    Ok(())
+}
 
 
 

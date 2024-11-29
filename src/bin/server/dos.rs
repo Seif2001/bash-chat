@@ -24,6 +24,12 @@ struct ClientInfo {
     username: String,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct HistoryEntry {
+    request_from: String,
+    request_to: String,
+    image: String,
+}
 
 
 pub async fn find_leader(servers: Arc<Mutex<HashMap<u32, Node>>>)->u32{
@@ -55,6 +61,14 @@ pub async fn send_ack( socket: &Socket, config: &Config, client_addr: Ipv4Addr) 
     com::send(&socket, "ACK".to_string(), dest).await
 }
 
+
+pub async fn send_ack_random(client_addr: Ipv4Addr) -> std::io::Result<()> {
+    let dest = (client_addr, client_addr.port());
+    let socket = &socket::new_client_socket().await();
+    com::send(&socket, "ACK".to_string(), dest).await
+}
+
+
 pub async fn send_dos( socket: &Socket, config:&Config) -> std::io::Result<()> {
     let file_path = "clients.json";
     let file_content = match File::open(file_path) {
@@ -75,6 +89,10 @@ pub async fn send_dos( socket: &Socket, config:&Config) -> std::io::Result<()> {
     com::send(&socket, file_content, dest).await
     
 }
+
+
+
+
 
 pub async fn send_dos_client( socket: &Socket, config: &Config, client_addr: Ipv4Addr) -> std::io::Result<()> {
     let file_path = "clients.json";
@@ -168,7 +186,39 @@ pub async fn dos_registrar(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32, 
                     let _ = send_dos_client(&socket_clone,&config_clone,client_addr).await;
                     println!("Sent dos to client");
                 }
-            }   
+            }
+            else if message.starts_with("UPDATE ") {
+                println!("Received update message from client");
+                let data = message.trim_start_matches("UPDATE ").trim().to_string();
+                if data.is_empty() {
+                    println!("No data provided ignoring");
+                    continue;
+                }
+                let servers_clone = Arc::clone(&servers);
+                if find_leader(servers_clone).await == my_id{
+                    update_history_table(data).await();
+                    let socket_clone = Arc::clone(&socket);
+                    let config_clone = Arc::clone(&config);
+                    let _ = send_history(&socket_clone, &config_clone);
+                    let _ = send_ack_random(client_addr).await;
+                }
+            }
+            else if message.starts_with("DELETE ") {
+                println!("Received delete message from client");
+                let data = message.trim_start_matches("DELETE ").trim().to_string();
+                if data.is_empty() {
+                    println!("No data provided ignoring");
+                    continue;
+                }
+                let servers_clone = Arc::clone(&servers);
+                if find_leader(servers_clone).await == my_id{
+                    delete_history_table(data).await();
+                    let socket_clone = Arc::clone(&socket);
+                    let config_clone = Arc::clone(&config);
+                    let _ = send_history(&socket_clone, &config_clone);
+                    let _ = send_ack_random(client_addr).await;
+                }
+            }      
         }
     });
 }
@@ -181,7 +231,7 @@ pub async fn recv_dos(socket: &Arc<Socket>, config: &Arc<Config>) {
     
     tokio::spawn(async move {
         loop {
-            let result = timeout( Duration::from_secs(1), com::recv(&socket_dos_rx)).await; //stop every once sec to release socket
+            let result = timeout(Duration::from_secs(1), com::recv(&socket_dos_rx)).await; // stop every once sec to release socket
 
             match result {
                 Ok(Ok((message, src))) => {
@@ -190,17 +240,112 @@ pub async fn recv_dos(socket: &Arc<Socket>, config: &Arc<Config>) {
                         println!("Ignoring message from own IP: {}", src.ip());
                         continue;
                     }
-                    if let Err(e) = read_file(message.to_string()).await {
-                        eprintln!("Failed to process received file: {}", e);
+                    if message.starts_with("DOS") {
+                        println!("Received DOS file update");
+                        let file_content = message.trim_start_matches("DOS").trim().to_string();                        
+                        if let Err(e) = read_file(file_content).await {
+                            eprintln!("Failed to process received file: {}", e);
+                        }
+                    } else if message.starts_with("HISTORY") {
+                        let file_content = message.trim_start_matches("HISTORY").trim().to_string();                        
+                        if let Err(e) = read_file(file_content).await {
+                            eprintln!("Failed to process received file: {}", e);
+                        }
+                    } else {
+                        println!("Received unrecognized message: {}", message);
                     }
                 }
                 Ok(Err(e)) => {
                     eprintln!("Failed to receive message: {}", e);
                 }
                 Err(_) => {
+                    // Timeout reached, no message received
                 }
             }
         }
     });
+}
+
+//history table 
+
+pub async fn update_history_table(data: String) {
+    let parts: Vec<&str> = data.split_whitespace().collect();
+    if parts.len() != 3 {
+        eprintln!("Invalid update data format. Expected: from_username to_username image_name");
+        return;
+    }
+
+    let from_username = parts[0].to_string();
+    let to_username = parts[1].to_string();
+    let image_name = parts[2].to_string();
+
+    let new_entry = HistoryEntry {
+        request_from: from_username.clone(),
+        request_to: to_username.clone(),
+        image: image_name.clone(),
+    };
+
+    let file_path = "history.json";
+    let mut history = if let Ok(file) = File::open(file_path) {
+        let reader = BufReader::new(file);
+        from_reader(reader).unwrap_or_else(|_| Vec::new())
+    } else {
+        Vec::new()
+    };
+
+    history.push(new_entry);
+
+    let file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path)
+        .expect("Unable to open or create the file");
+    let writer = BufWriter::new(file);
+    to_writer(writer, &history).expect("Failed to write to file");
+}
+
+pub async fn delete_history_table(data: String) {
+    let parts: Vec<&str> = data.split_whitespace().collect();
+    if parts.len() != 3 {
+        eprintln!("Invalid delete data format. Expected: from_username to_username image_name");
+        return;
+    }
+
+    let from_username = parts[0].to_string();
+    let to_username = parts[1].to_string();
+    let image_name = parts[2].to_string();
+
+    let file_path = "history.json";
+    let mut history = if let Ok(file) = File::open(file_path) {
+        let reader = BufReader::new(file);
+        from_reader(reader).unwrap_or_else(|_| Vec::new())
+    } else {
+        Vec::new()
+    };
+
+    history.retain(|entry| !(entry.image == image_name && entry.request_from == from_username && entry.request_to == to_username));
+
+    let file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path)
+        .expect("Unable to open or create the file");
+    let writer = BufWriter::new(file);
+    to_writer(writer, &history).expect("Failed to write to file");
+}
+
+pub async fn send_history( socket: &Socket, config:&Config) -> std::io::Result<()> {
+    let file_path = "history.json";
+    let file_content = match File::open(file_path) {
+        Ok(mut file) => {
+            let mut content = String::new();
+            file.read_to_string(&mut content)?;
+            content
+        }
+        Err(e) => {
+            eprintln!("Failed to read the file: {}", e);
+            return Err(e);
+        }
+    };
+    let dest = (config.multicast_addr, config.port_server_dos_rx);    
+    let socket = socket.socket_server_dos_rx.clone();
+
+
+    com::send(&socket, file_content, dest).await
+    
 }
 
