@@ -38,41 +38,12 @@ pub async fn send_images_from_to(
         server_port
     );
     println!("********************************************************************************");
+    let path = config.client_raw_images_dir.clone();
+    let send_socket_new = send_image(&send_socket, file_name, &path, server_ip, server_port, 1020, &config).await?;
 
-
-    // let mut read_dir = read_dir(image_path).await?;
-    // while let Some(entry) = read_dir.next().await {
-    //     if num_images == 0 {
-    //         break;
-    //     }
-    //     num_images -= 1;
-
-        // let entry = entry?;
-        // let path = entry.path();
-
-        // if path.is_file().await {
-        //     if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                
-                println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
-                
-                // Send the "START" message directly to the server
-                // let dest = (server_ip, server_port);
-                // com::send(&send_socket.socket_client_server_tx, file_name.to_string(), dest).await?;
-                // println!(" --  'Name' message sent ");
-
-                // // Receive leader's address from the server
-                // let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
-                // println!(" --  received name ack to begin sending: {}", ack); // already inside the receive leader function
-                let path = config.client_raw_images_dir.clone();
-                let send_socket_new = send_image(&send_socket, file_name, &path, server_ip, server_port, 1020, &config).await?;
-
-
-                // Receive image
-                let new_path = PathBuf::from(config.client_encoded_images_dir.clone());
-                receive_image(&send_socket, config, send_socket_new, new_path).await?;
-        //     }
-        // }
-    // }
+    // Receive image
+    let new_path = PathBuf::from(config.client_encoded_images_dir.clone());
+    receive_image(&send_socket, config, send_socket_new, new_path).await?;
 
     println!("\nClient {} completed sending images to addr {}.", client_order, server_ip);
     println!("----------------------------------------------------------------------------");
@@ -80,6 +51,7 @@ pub async fn send_images_from_to(
 
     Ok(())
 }
+
 //Receiving
 pub async fn recv_image_name(sending_socket: Arc<Mutex<UdpSocket>>, config: &Config) -> Result<(String, Ipv4Addr), std::io::Error> {
     //let socket_client_server_rx = &socket.socket_client_rx;

@@ -3,6 +3,7 @@ use mini_redis::client;
 use tokio::task;
 use std::net::{SocketAddr, UdpSocket, Ipv4Addr};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub mod config;
 pub mod socket;
@@ -24,8 +25,17 @@ use crate::socket::Socket;
 
 async fn main() -> io::Result<()> {
     let config = Config::new();
-    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
-    let config = Config::new();
+    let socket = Socket::new(
+        config.address_server_1.clone(),
+        config.address_server_2.clone(),
+        config.address_server_3.clone(),
+        config.address_client_leader_rx.clone(),
+        config.address_client_tx.clone(),
+        config.address_client_rx.clone(),
+        config.address_client_dos_tx.clone(),
+        config.address_client_dos_rx.clone(),
+        config.address_client_image_request_rx.clone()
+    ).await;
     // // frontend::start_frontend(&socket, &config).await?;
     // // //middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
     // // dos::register_dos(&socket, &config).await?;
@@ -50,10 +60,26 @@ async fn main() -> io::Result<()> {
     // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, true).await;
     // // // Respond to "Image Name"
     // // middleware::p2p_recv_request(&socket, &config).await?;
-    let image_name = "image3.png";
-    let image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
-    println!("{:?}", image_processor::get_views(image_path.to_str().unwrap().to_string()));
+    // // let image_name = "image3.png";
+    // // let image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
+    // // println!("{:?}", image_processor::get_views(image_path.to_str().unwrap().to_string()));
+    //  // Spawn a background task to handle incoming requests
+    // Start the `p2p_recv_request` in a background task
+    let config = Arc::new(config);
+    let socket = Arc::new(Mutex::new(socket));
 
+     tokio::spawn(async move {
+        loop {
+            // Lock the socket to get access to the inner Socket
+            let socket_locked = socket.lock().await;
+            if let Err(e) = middleware::p2p_recv_request(&*socket_locked, &config).await {
+                eprintln!("Error in p2p_recv_request: {}", e);
+            }
+        }
+    });
+
+    tokio::signal::ctrl_c().await?;
+    println!("Received Ctrl+C, shutting down...");
 
     Ok(())
 }
