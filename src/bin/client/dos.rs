@@ -9,7 +9,7 @@ use crate::com;
 use crate::image_com;
 use std::fs::{File, read_dir, create_dir_all};
 use std::path::Path;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::io::Write;
 use std::io::Read;
 use std::fs;
@@ -132,49 +132,62 @@ pub async fn read_file(message: String) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn request_dos(socket: &Socket, config: &Config) -> std::io::Result<()> {
+pub async fn request_dos(socket: &Socket, config: &Config) -> std::io::Result<Ipv4Addr> {
     let socket_client_dos_rx = socket.socket_client_dos_rx.clone(); // port on client
     let message = "REQUEST";
 
-    let (ack_tx, mut ack_rx): (broadcast::Sender<bool>, broadcast::Receiver<bool>) = broadcast::channel(1); // tx `true` when ack is received
+    // Modify the type of the broadcast to send the Ipv4Addr (source IP)
+    let (ack_tx, mut ack_rx): (broadcast::Sender<Ipv4Addr>, broadcast::Receiver<Ipv4Addr>) = broadcast::channel(1);
 
-    // Task that listens for an json file
+    // Task that listens for a json file and sends the src IP when successful
     tokio::spawn({
         let socket_client_dos_rx = socket_client_dos_rx.clone();
         let ack_tx = ack_tx.clone();
         async move {
             loop {
-                let (message, _src) = com::recv(&socket_client_dos_rx)
+                let (message, src) = com::recv(&socket_client_dos_rx)
                     .await
                     .expect("Failed to receive message");
+
                 if let Err(e) = read_file(message.to_string()).await {
                     eprintln!("Failed to process received file: {}", e);
-                }
-                else{
+                } else {
                     println!("File received successfully.");
-                    let _ = ack_tx.send(true);
-                    break; 
+                    // Assuming `src` is of type `SocketAddr`, extract the `Ipv4Addr`
+                    if let SocketAddr::V4(ipv4) = src {
+                        // Send only the Ipv4Addr part to the main task
+                        let _ = ack_tx.send(ipv4.ip().clone()); // Clone the Ipv4Addr
+                    } else {
+                        eprintln!("Received an unexpected address type.");
+                    }
+                    break; // Once file is received and ACK is sent, stop listening
                 }
             }
         }
     });
 
-    // Loop to try request dos every 5 seconds until we receive an ACK
+    // Loop to try requesting DOS every 5 seconds until we receive an ACK with src IP
     loop {
         send_cloud_port(&socket, &config, &message.to_string(), config.port_client_dos_tx).await?;
+
         tokio::select! {
-            _ = ack_rx.recv() => {
-                println!("file received, request successful.");
-                break;
+            // Use `?` to propagate any error from `recv()`
+            src_ip = ack_rx.recv() => {
+                // Unwrap or propagate the result from recv()
+                let src_ip = src_ip?;  // This will propagate the error if there's an issue with receiving
+
+                println!("File received, request successful.");
+                // Return the source IP received in the ACK
+                return Ok(src_ip); // Return the source IP address wrapped in Ok
             }
             _ = sleep(Duration::from_secs(5)) => {
                 println!("Timeout, sending REQUEST again...");
             }
         }
     }
-
-    Ok(())
 }
+
+
 pub fn parse_clients(json_path: &str, curr_client: &str) -> Vec<Client>{
     let json_data = fs::read_to_string(json_path)
         .expect("Failed to read JSON file from the provided path");

@@ -45,7 +45,7 @@ async fn main() -> io::Result<()> {
     let sending_socket_server = socket.new_client_socket().await;
 
     let image_name = "image3.png";
-    let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
+    let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 16, 2);
     let client_port = config.port_client_image_request_rx;
     let _ = api::request_image(&socket, &config, sending_socket, sending_socket_server, image_name.to_string(), client_ip, "test",client_port, false).await;
     // // Respond to "Image Name"

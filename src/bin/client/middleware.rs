@@ -530,7 +530,7 @@ pub async fn p2p_send_images_list(socket_send: &Arc<Mutex<UdpSocket>>, dest: (Ip
     }
 }
 
-pub async fn p2p_history_table_update(socket: &Socket,sending_socket: Arc<Mutex<UdpSocket>>,config: &Config,client_address: Ipv4Addr,client_port: u16,from_username: &String,to_username: &String, path: PathBuf) -> std::io::Result<()> {
+pub async fn p2p_history_table_update(socket: &Socket,sending_socket: Arc<Mutex<UdpSocket>>,config: &Config,server_address: Ipv4Addr,client_port: u16,from_username: &String,to_username: &String, path: PathBuf) -> std::io::Result<()> {
     let image_name = path.file_name().unwrap_or_default().to_string_lossy();
     let message = format!("UPDATE {} {} {}", from_username, to_username, image_name);
 
@@ -556,7 +556,7 @@ pub async fn p2p_history_table_update(socket: &Socket,sending_socket: Arc<Mutex<
     });
 
     loop {
-        let dest = (client_address, client_port);
+        let dest = (server_address, client_port);
         com::send(&sending_socket, message.clone(), dest).await?;
 
         tokio::select! {

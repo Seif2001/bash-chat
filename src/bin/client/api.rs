@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::config::Config;
 use crate::socket::{self, Socket};
-use crate::{image_com, middleware};
+use crate::{dos, image_com, middleware};
 
 pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::Result<()> {
     let start = "START".to_string();
@@ -104,6 +104,7 @@ pub async fn request_image(
             // Optionally, you can try to recover, retry, or just return the error
         }
     }
+    dos::request_dos(&socket, &config);
     match middleware::p2p_history_table_update(socket, sending_socket_server.clone(), config, client_ip,client_port, &config.username, &client_username.to_string(),low_path_2.clone()).await {
         Ok(_) => {
             // If the request is successful, proceed to sending the image
