@@ -34,9 +34,9 @@ async fn main() -> io::Result<()> {
     // println!("Before send images");
     // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
     // println!("After send images");
-    image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
-    let client_ip = Ipv4Addr::new(10, 7, 16, 43);
-    api::request_list_images(&socket, &config, client_ip).await?;
+    // image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
+    // let client_ip = Ipv4Addr::new(10, 7, 16, 43);
+    // api::request_list_images(&socket, &config, client_ip).await?;
 
     // Client 2 Config
     // Respond to "image Request"
@@ -47,7 +47,7 @@ async fn main() -> io::Result<()> {
     // let client_port = config.port_client_image_request_rx;
     // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
     // // Respond to "Image Name"
-    middleware::p2p_recv_image_request(&socket, &config).await?;
+    middleware::p2p_recv_request(&socket, &config).await?;
 
 
     Ok(())
