@@ -1,19 +1,120 @@
 
+use async_std::path::PathBuf;
 use mini_redis::server;
-use tokio::sync::broadcast;
+use tokio::net::UdpSocket;
+use tokio::sync::{broadcast, Mutex};
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use crate::config::{self, Config};
 use crate::socket::{self, Socket};
-use crate::com;
+use crate::{com, image_processor};
 use crate::image_com;
+use std::fs::{File, read_dir, create_dir_all};
+use std::path::Path;
+use std::net::Ipv4Addr;
+use std::io::Write;
+use std::io::Read;
+use serde_json::Value; // For deserializing the received JSON (if needed)
+use serde::{Serialize, Deserialize};
+use tokio::fs::read_to_string;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use serde_json;
+
+// Define the Image struct and ImageList type (a vector of Image)
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Image {
+    pub image: String,
+    pub views: u32,
+}
+
+pub type ImageList = Vec<Image>;
+
+// async fn send_images_from_to(
+//     image_path: &str,
+//     mut num_images: usize,
+//     client_order: u32,
+//     server_ip: Ipv4Addr,
+//     server_port: u16,
+//     send_socket: &Socket,
+//     config: &Config
+// ) -> std::io::Result<()> {
+
+//     println!("\n******************************************************************************");
+//     println!(
+//         "Client {} is sending {} images from '{}' to addr {}:{}",
+//         client_order, 
+//         num_images,
+//         image_path, 
+//         server_ip,
+//         server_port
+//     );
+//     println!("********************************************************************************");
+
+
+//     for entry in read_dir(image_path)? {
+//         if num_images == 0 {
+//             break;
+//         }
+//         num_images -= 1;
+
+//         let entry = entry?;
+//         let path = entry.path();
+
+//         if path.is_file() {
+//             if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                
+//                 println!(" \n >>>>>>>>>>>>>>>> file: {} <<<<<<<<<<<<<<<", file_name);
+                
+//                 // Send the "START" message directly to the server
+//                 let dest = (server_ip, server_port);
+//                 com::send(&send_socket.socket_client_server_tx, "START".to_string(), dest).await?;
+//                 println!(" --  'START' message sent ");
+
+//                 // Receive leader's address from the server
+//                 let (ack, _) = com::recv(&send_socket.socket_client_rx).await?;
+//                 println!(" --  received ack to begin sending: {}", ack); // already inside the receive leader function
+
+//                 image_com::send_image(&send_socket, async_std::path::Path::new(image_path), server_ip, server_port, 1024).await?;
+
+
+//                 // Wait for acknowledgment from the server
+//                 image_com::receive_image(&send_socket, config).await?;
+//             }
+//         }
+//     }
+
+//     println!("\nClient {} completed sending images to addr {}.", client_order, server_ip);
+//     println!("----------------------------------------------------------------------------");
+//     println!("----------------------------------------------------------------------------\n");
+
+//     Ok(())
+// }
 
 // send to 3 servers
 
+async fn get_views_for_image(image_name: &str, json_path: &str) -> Result<u32, std::io::Error> {
+    // Read the JSON file asynchronously
+    let file_contents = read_to_string(json_path).await?;
+    
+    // Parse the JSON into a vector of ImageEntry objects
+    let image_entries: Vec<Image> = serde_json::from_str(&file_contents)?;
+
+    // Search for the image entry by image name and return the views
+    for entry in image_entries {
+        if entry.image == image_name {
+            return Ok(entry.views);
+        }
+    }
+    
+    // If image is not found, return a default value (e.g., 0 views)
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Image not found"))
+}
+
 pub async fn send_cloud(socket: &Socket, config: &Config, message: &String)  -> std::io::Result<()>  {
-    let socket_server_1 = &socket.socket_server_1;
-    let socket_server_2 = &socket.socket_server_2;
-    let socket_server_3 = &socket.socket_server_3;
+    let socket_server_1 = &socket.new_client_socket().await;
+    let socket_server_2 = &socket.new_client_socket().await;
+    let socket_server_3 = &socket.new_client_socket().await;
 
 
     // Verify destination addresses before sending
@@ -129,96 +230,44 @@ pub async fn send_cloud_port(socket: &Socket, config: &Config, message: &String,
 
 // receive leader message
 
-pub async fn recv_leader(socket: Socket, config: Config) -> std::io::Result<()> {
+
+pub async fn recv_leader(socket: &Socket, config: &Config) -> Ipv4Addr {
     let socket_client_leader_rx = socket.socket_client_leader_rx.clone();
-    
+    let socket_client_tx = socket.socket_client_tx.clone();
 
-    tokio::spawn({
-        async move {
-            loop {
-            let (message, src) = com::recv(&socket_client_leader_rx).await.expect("Failed to receive message");
-            let message = message.trim();
-            let src = src.ip();
-            
-                if message.starts_with("LEADER") {
-                    println!("Received leader message from {}: {}", src, message);
-                    if let std::net::IpAddr::V4(ipv4_src) = src {
-                        image_com::send_image(ipv4_src, &socket, &config).await.expect("Failed to send image");
-                    } else {
-                        eprintln!("Received non-IPv4 address: {}", src);
-                    }
-                
-                }
-            }
-        }
-    });
-    Ok(())
-}
-
-pub async fn register_dos(socket: &Socket, config: &Config) -> std::io::Result<()> {
-    let socket_client_dos_rx = socket.socket_client_dos_rx.clone(); // port on client
-    let register_message = format!("REGISTER {}", config.username);  // Register to dos message
-
-    let (ack_tx, mut ack_rx): (broadcast::Sender<bool>, broadcast::Receiver<bool>) = broadcast::channel(1); // tx `true` when ack is received
-
-    // Task that listens for an ACK
-    tokio::spawn({
-        let socket_client_dos_rx = socket_client_dos_rx.clone();
-        let ack_tx = ack_tx.clone();
-        async move {
-            loop {
-                // Receive a message from the server
-                let (message, _src) = com::recv(&socket_client_dos_rx)
-                    .await
-                    .expect("Failed to receive message");
-                let message = message.trim();
-
-                if message == "ACK" {
-                    println!("Received ACK from server.");
-                    let _ = ack_tx.send(true); // Send signal that ACK was received
-                    break; // Exit the loop once ACK is received
-                }
-            }
-        }
-    });
-
-    // Loop to try registering every 5 seconds until we receive an ACK
+    send_cloud(&socket, &config, &"START".to_string()).await.expect("Failed to send message");
     loop {
-        send_cloud_port(&socket, &config, &register_message, config.port_client_dos_tx).await?;
-        tokio::select! {
-            _ = ack_rx.recv() => {
-                println!("ACK received, registration successful.");
-                break;
-            }
-            _ = sleep(Duration::from_secs(5)) => {
-                println!("Timeout, sending REGISTER again...");
+        let (message, src) = com::recv(&socket_client_leader_rx).await.expect("Failed to receive message");
+        let message = message.trim();
+        let src = src.ip();
+
+        if message.starts_with("LEADER") {
+            println!("Received leader message from {}: {}", src, message);
+            if let std::net::IpAddr::V4(ipv4_src) = src {
+                return ipv4_src;
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
             }
         }
     }
-
-    Ok(())
 }
 
 //P2P Communication
 // Function for sending an "image Request" to Client 2
-pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
-    let socket_client_tx = &socket.socket_client_tx;
-    let message = "image Request";
-
+pub async fn p2p_send_image_request(socket: &Socket, sending_socket: Arc<Mutex<UdpSocket>>, config:&Config, client_address: Ipv4Addr, client_port: u16, message: &String, path: PathBuf) -> std::io::Result<()> {
     // Broadcast channel to signal when acknowledgment is received
     let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
 
     // Task to listen for acknowledgment
     tokio::spawn({
-        let socket_client_tx = socket_client_tx.clone();
-        let ack_tx = ack_tx.clone();
+        let sending_socket = sending_socket.clone();
+        let ack_tx = ack_tx.clone(); // Clone the broadcast transmitter
         async move {
             loop {
-                let (response, src) = com::recv(&socket_client_tx).await.expect("Failed to receive message");
+                let (response, src) = com::recv(&sending_socket).await.expect("Failed to receive message");
                 let response = response.trim();
 
-                if response == "Sample Images" {
-                    println!("Received acknowledgment 'Sample Images' from {}", src);
+                if response == "ack_request" {
                     let _ = ack_tx.send(true); // Signal acknowledgment received
                     break;
                 } else {
@@ -227,15 +276,15 @@ pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::
             }
         }
     });
-
-    // Retry loop to send the request
     loop {
-        println!("Sending 'image Request' to {}:{}", client_address.0, client_address.1);
-        com::send(socket_client_tx, message.to_string(), client_address).await?;
+        println!("Sending image request to {}:{}", client_address, client_port);
+        let dest = (client_address, client_port);
+        com::send(&sending_socket, message.to_string(), dest).await?;
 
         tokio::select! {
             _ = ack_rx.recv() => {
                 println!("Acknowledgment received, moving to next step.");
+                image_com::receive_image(socket, config, sending_socket, path).await?;
                 break;
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
@@ -248,26 +297,102 @@ pub async fn p2p_send_image_request(socket: &Socket, client_address: (std::net::
 }
 
 
-pub async fn p2p_recv_image_request(socket: &Socket) -> std::io::Result<()> {
-    let client_rx = &socket.socket_client_rx;
-    let socket_client_tx = &socket.socket_client_tx;
+pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Result<()> {
+    let client_rx = &socket.socket_client_request_images_rx;
 
     loop {
         let (message, src) = com::recv(client_rx).await?;
         let message = message.trim();
-
-        if message == "image Request" {
-            println!("Received 'image Request' from {}", src);
-
-            let response = "Sample Images";
-            println!("Responding with 'Sample Images' to {}", src);
+        if message.starts_with("GET H ") {
+            let image_name = message.trim_start_matches("GET H ").trim().to_string();
+            println!("Received high image Request from {}", src);
+            if image_name.is_empty() {
+                println!("No image name provided");
+                continue;
+            }
+            let response = "ack_request";
+            let sending_socket = socket.new_client_socket().await;
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
-                com::send(socket_client_tx, response.to_string(), (ipv4_src, src.port())).await?;
+                com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
+                // let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                let path = config.client_encoded_images_dir.clone();
+                send_cloud(&socket, &config,&"START".to_string()).await?;
+                let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                // println!("Before send images");
+                image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+                // println!("After send images");
+                let temp_image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
+                // Define the path to the JSON file
+                let json_path = "my_images.json"; // Replace with the actual path to the JSON file
+                
+                // Retrieve the number of views for the image from the JSON file
+                let views = match get_views_for_image(&image_name, json_path).await {
+                    Ok(views) => views,
+                    Err(_) => {
+                        println!("Image not found in JSON, defaulting to 0 views.");
+                        0 // Default to 0 views if image is not found
+                    }
+                };
+                image_processor::append_views(temp_image_path.display().to_string(), temp_image_path.display().to_string(),views);
+                image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
+                //let _ = image_processor::get_views(temp_image_path.display().to_string());
+
             } else {
                 eprintln!("Received non-IPv4 address: {}", src);
             }
-            break; // Exit loop after responding
-        } else {
+            // break; there is no breaking man we keep listeening forever and ever and ever
+        } 
+        else if message.starts_with("GET L ") {
+            let image_name = message.trim_start_matches("GET L ").trim().to_string();
+
+            println!("Received low image Request from {}", src);
+            if image_name.is_empty() {
+                println!("No image name provided");
+                continue;
+            }
+            let response = "ack_request";
+            let sending_socket = socket.new_client_socket().await;
+
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
+                let image_path = Path::new(&config.client_raw_images_dir).join(&image_name);
+                let low_image_path = Path::new(&config.client_low_quality_images_dir).join(&image_name);
+                // println!("Creating low image: {}", low_image_path.display());
+                // println!("input path: {}", image_path.display());
+                let _ = image_processor::resize_image(image_path.to_str().unwrap(), low_image_path.to_str().unwrap()); //add low image directory
+                let low_path = config.client_low_quality_images_dir.clone();
+                image_com::send_image(socket, &image_name, &low_path, ipv4_src, src.port(), 1020, config).await?;
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+            // break; there is no breaking man we keep listeening forever and ever and ever
+        } 
+        else if message == "GET LIST" {
+
+            let response = "ack_list";
+
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                let dest = (ipv4_src, src.port()); // This is the destination address and port
+
+    
+                tokio::spawn(async move {
+                    
+                    if let Err(e) = com::send(&socket::new_client_socket().await, response.to_string(), dest).await {
+                        eprintln!("Error sending acknowledgment: {}", e);
+                    } else {
+                        println!("HERE");
+                        if let Err(e) = p2p_send_images_list(&socket::new_client_socket().await, dest).await {
+                            eprintln!("Error sending images list: {}", e);
+                        }
+                    }
+                });
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+        }
+            
+        
+        else {
             println!("Received unexpected message '{}'", message);
         }
     }
@@ -276,10 +401,11 @@ pub async fn p2p_recv_image_request(socket: &Socket) -> std::io::Result<()> {
 }
 
 
-// Function for sending an image name from Client 1 to Client 2
-pub async fn p2p_send_image_name(socket: &Socket, client_address: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
-    let socket_client_tx = &socket.socket_client_tx;
-    let image_name = "Image Name";
+
+
+pub async fn p2p_send_list_images_request(socket: &Socket, config: &Config, client_address: std::net::Ipv4Addr, message: &String, socket_client_tx_rx: Arc<Mutex<UdpSocket>>) -> std::io::Result<(Arc<Mutex<UdpSocket>>)> {
+    let socket_client_tx = socket_client_tx_rx;
+    
 
     // Broadcast channel to signal when acknowledgment is received
     let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
@@ -293,7 +419,7 @@ pub async fn p2p_send_image_name(socket: &Socket, client_address: (std::net::Ipv
                 let (response, src) = com::recv(&socket_client_tx).await.expect("Failed to receive message");
                 let response = response.trim();
 
-                if response == image_name {
+                if response == "ack_list" {
                     println!("Received acknowledgment '{}' from {}", response, src);
                     let _ = ack_tx.send(true); // Signal acknowledgment received
                     break;
@@ -304,18 +430,40 @@ pub async fn p2p_send_image_name(socket: &Socket, client_address: (std::net::Ipv
         }
     });
 
-    // Retry loop to send the image name
+    // Retry loop to send the request
     loop {
-        println!("Sending image name '{}' to {}:{}", image_name, client_address.0, client_address.1);
-        com::send(socket_client_tx, image_name.to_string(), client_address).await?;
+        let dest = (client_address, config.port_client_image_request_rx);   
+        println!("Sending 'GET LIST' to {}:{}", dest.0, dest.1);
+        com::send(&socket_client_tx, message.to_string(), dest).await?;
 
         tokio::select! {
             _ = ack_rx.recv() => {
-                println!("Acknowledgment received, image name sent successfully.");
+                println!("Acknowledgment received, moving to next step.");
                 break;
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
-                println!("Timeout, resending image name...");
+                println!("Timeout, resending 'GET LIST'...");
+            }
+        }
+    }
+
+    Ok((socket_client_tx))
+}
+
+pub async fn p2p_recv_list_images(socket_recv: Arc<Mutex<UdpSocket>>) -> std::io::Result<()> {
+    let socket_client_rx = socket_recv.clone();
+
+    loop {
+        let (message, _src) = com::recv(&socket_client_rx).await?;
+        let message = message.trim();
+
+        // Process the received message, which is expected to be a JSON string.
+        match process_json_message(message).await {
+            Ok(_) => {
+                println!("Successfully processed message.");
+            },
+            Err(e) => {
+                eprintln!("Error processing message: {}", e);
             }
         }
     }
@@ -323,24 +471,58 @@ pub async fn p2p_send_image_name(socket: &Socket, client_address: (std::net::Ipv
     Ok(())
 }
 
+async fn process_json_message(message: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let parsed_json: Value = serde_json::from_str(message)?;
 
-// Function for receiving an image name and responding with confirmation
-pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
-    let socket_client_rx = &socket.socket_client_rx;
+    write_to_file("requested_images.json", message).await?;
 
+    Ok(())
+}
+
+async fn write_to_file(filename: &str, content: &str) -> std::io::Result<()> {
+    let mut file = File::create(filename)?;
+
+    file.write_all(content.as_bytes())?;
+
+    println!("Successfully wrote to {}", filename);
+    Ok(())
+}
+
+
+
+pub async fn p2p_recv_images_list_request(socket: Arc<Mutex<Socket>>) -> std::io::Result<()> {
+    let client_rx = socket.clone();
+
+    
     loop {
-        let (message, src) = com::recv(socket_client_rx).await?;
+        let (message, src) = com::recv(&client_rx.lock().await.socket_client_request_images_rx).await?;
         let message = message.trim();
+        if message == "GET LIST" {
+            println!("Received 'image Request' from {}", src);
 
-        if message == "Image Name" {
-            println!("Received image name '{}' from {}", message, src);
-            println!("Echoing back image name '{}' to {}", message, src);
+            let response = "ack_list";
+            println!("Responding with ack to {}", src);
+
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
-                com::send(socket_client_rx, message.to_string(), (ipv4_src, src.port())).await?;
+                let dest = (ipv4_src, src.port()); // This is the destination address and port
+
+    
+                println!("Here");
+                tokio::spawn(async move {
+                    
+                    if let Err(e) = com::send(&socket::new_client_socket().await, response.to_string(), dest).await {
+                        eprintln!("Error sending acknowledgment: {}", e);
+                    } else {
+                        println!("HERE");
+                        if let Err(e) = p2p_send_images_list(&socket::new_client_socket().await, dest).await {
+                            eprintln!("Error sending images list: {}", e);
+                        }
+                    }
+                });
+
             } else {
                 eprintln!("Received non-IPv4 address: {}", src);
             }
-            break; // Exit loop after responding
         } else {
             println!("Received unexpected message '{}'", message);
         }
@@ -348,3 +530,42 @@ pub async fn p2p_recv_image_name(socket: &Socket) -> std::io::Result<()> {
 
     Ok(())
 }
+
+
+
+async fn parse_images_file() -> std::io::Result<String> {
+    let mut file = File::open("my_images.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    let images: ImageList = serde_json::from_str(&contents)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    let json_data = serde_json::to_string(&images)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    Ok(json_data)
+}
+
+pub async fn p2p_send_images_list(socket_send: &Arc<Mutex<UdpSocket>>, dest: (Ipv4Addr, u16)) -> std::io::Result<()> {
+
+    match parse_images_file().await {
+        Ok(json_data) => {
+            com::send(socket_send, json_data, dest).await?;
+            println!("Sent image list to {}:{}", dest.0, dest.1);
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error parsing image file: {}", e);
+            Err(e)
+        }
+    }
+}
+
+
+
+
+
+
+//     Ok(())
+// }&config.client_low_images_dir/image_name

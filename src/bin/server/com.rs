@@ -50,5 +50,16 @@ pub async fn recv(socket: &Arc<Mutex<UdpSocket>>) -> io::Result<(String, SocketA
 }
 
 
+pub async fn recv_raw(socket: &Arc<Mutex<UdpSocket>>) -> io::Result<([u8; 1024], SocketAddr)> {
+    let socket = socket.lock().await;
+    let mut buf = [0; 1024];
+
+    // Receive data from the UDP socket
+    let (amt, src) = socket.recv_from(&mut buf).await?;
+
+    // Convert the received data into a String and return the message and source address
+    // let message = String::from_utf8_lossy(&buf[..amt]).to_string();
+    Ok((buf, src))
+}
 
 
