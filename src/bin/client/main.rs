@@ -42,6 +42,7 @@ async fn main() -> io::Result<()> {
     // Wrap the socket and config in Arc<Mutex<>> to share across tasks
     let config = Arc::new(config);
     let socket_arc = Arc::new((socket));
+    // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
     dos::register_dos(&socket_arc, &config).await?;
     dos::request_dos(&socket_arc, &config).await?;
 
@@ -53,17 +54,16 @@ async fn main() -> io::Result<()> {
         }
     });
     dos::request_dos(&socket_arc, &config).await?;
-
+    // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
+    // println!("Leader is {} ", leader_ip);
+    // println!("Before send images");
+    // image_com::send_images_to_server(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket_arc, &config).await?;
+    // println!("After send images");
     loop{}
             // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
 
         // let mut clients = dos::parse_clients("clients_request.json",&config.username);
         // dos::print_clients(clients);
-        // let leader_ip:Ipv4Addr= middleware::recv_leader(&socket, &config).await;
-        // println!("Leader is {} ", leader_ip);
-        // println!("Before send images");
-        // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
-        // println!("After send images");
         // image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
         // let client_ip = Ipv4Addr::new(10, 7, 16, 43);
         // api::request_list_images(&socket, &config, client_ip).await?;
