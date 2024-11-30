@@ -21,14 +21,13 @@ use crate::socket::Socket;
     }
     
     
-    pub async fn run() {
+    pub async fn run(socket: Socket, config: Config) {
         let mut curr_dir = Directory {
             hierchy: 0,
             name: "root".to_string(),
             client: None
         };
-        let config = Config::new();
-        let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
+ 
         let config = Config::new();
 
         let mut rl = rustyline::DefaultEditor::new().expect("Err");
