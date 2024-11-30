@@ -149,9 +149,9 @@ pub fn get_views(encoded_image_path: String) -> std::io::Result<u32> {
     let views_bytes = &buffer[buffer.len() - 4..];
     let views = u32::from_be_bytes(views_bytes.try_into().unwrap());
     let image_data = &buffer[..buffer.len() - 4];
-    let mut output_file = File::create(encoded_image_path)?;
-    output_file.write_all(image_data)?;
-    println!("Image saved without views. Number of views extracted: {}", views);
+    // let mut output_file = File::create(encoded_image_path)?;
+    // output_file.write_all(image_data)?;
+    //println!("Image saved without views. Number of views extracted: {}", views);
 
     Ok(views)
 }
