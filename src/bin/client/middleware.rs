@@ -326,6 +326,100 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
             let sending_socket = socket.new_client_socket().await;
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
+                let path = config.client_encoded_images_dir.clone();
+                //save to history table
+                //_ = dos::request_dos(&socket, &config).await;
+                let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
+                let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
+
+                if let Ok(_) = image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await {
+                    println!("Image sent successfully!");
+                    let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
+                } else {
+                    println!("Failed to send image.");
+                }
+                //image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
+
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+            // break; there is no breaking man we keep listeening forever and ever and ever
+        } 
+        else if message.starts_with("GET L ") {
+            let image_name = message.trim_start_matches("GET L ").trim().to_string();
+
+            println!("Received low image Request from {}", src);
+            if image_name.is_empty() {
+                println!("No image name provided");
+                continue;
+            }
+            let response = "ack_request";
+            let sending_socket = socket.new_client_socket().await;
+
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
+                let image_path = Path::new(&config.client_raw_images_dir).join(&image_name);
+                let low_image_path = Path::new(&config.client_low_quality_images_dir).join(&image_name);
+                println!("Creating low image: {}", low_image_path.display());
+                println!("input path: {}", image_path.display());
+                image_processor::resize_image(image_path.to_str().unwrap(), low_image_path.to_str().unwrap()); //add low image directory
+                let low_path = config.client_low_quality_images_dir.clone();
+                image_com::send_image(socket, &image_name, &low_path, ipv4_src, src.port(), 1020, config).await?;
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+            // break; there is no breaking man we keep listeening forever and ever and ever
+        } 
+        else if message == "GET LIST" {
+
+            let response = "ack_list";
+
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                let dest = (ipv4_src, src.port()); // This is the destination address and port
+
+    
+                tokio::spawn(async move {
+                    
+                    if let Err(e) = com::send(&socket::new_client_socket().await, response.to_string(), dest).await {
+                        eprintln!("Error sending acknowledgment: {}", e);
+                    } else {
+                        println!("HERE");
+                        if let Err(e) = p2p_send_images_list(&socket::new_client_socket().await, dest).await {
+                            eprintln!("Error sending images list: {}", e);
+                        }
+                    }
+                });
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+        }
+            
+        
+        else {
+            println!("Received unexpected message '{}'", message);
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn p2p_recv_request_copy(socket: &Socket, config: &Config) -> std::io::Result<()> {
+    let client_rx = &socket.socket_client_request_images_rx;
+
+    loop {
+        let (message, src) = com::recv(client_rx).await?;
+        let message = message.trim();
+        if message.starts_with("GET H ") {
+            let image_name = message.trim_start_matches("GET H ").trim().to_string();
+            println!("Received high image Request from {}", src);
+            if image_name.is_empty() {
+                println!("No image name provided");
+                continue;
+            }
+            let response = "ack_request";
+            let sending_socket = socket.new_client_socket().await;
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
                 let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
                 let path = config.client_encoded_images_dir.clone();
                 send_cloud(&socket, &config,&"START".to_string()).await?;
@@ -409,8 +503,6 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
 
     Ok(())
 }
-
-
 
 
 pub async fn p2p_send_list_images_request(socket: &Socket, config: &Config, client_address: std::net::Ipv4Addr, message: &String, socket_client_tx_rx: Arc<Mutex<UdpSocket>>) -> std::io::Result<(Arc<Mutex<UdpSocket>>)> {
