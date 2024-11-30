@@ -5,7 +5,6 @@ use time::convert::Nanosecond;
 use tokio::task;
 use std::net::{SocketAddr, UdpSocket, Ipv4Addr};
 use std::sync::Arc;
-
 pub mod config;
 pub mod socket;
 pub mod com;
@@ -46,11 +45,12 @@ async fn main() -> io::Result<()> {
         // Client 2 Config
         // Respond to "image Request"
         // middleware::p2p_recv_image_request(&socket, &config).await?;
-        // let sending_socket = socket.new_client_socket().await;
-        // let image_name = "image3.png";
+         let sending_socket = socket.new_client_socket().await;
+         let image_name = "image3.png";
         // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-        // let client_port = config.port_client_image_request_rx;
-        // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
+        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"newuser")?;
+        let client_port = config.port_client_image_request_rx;
+        let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
         // // Respond to "Image Name"
         middleware::p2p_recv_request(&socket, &config).await?;
     

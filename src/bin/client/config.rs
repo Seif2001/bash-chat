@@ -24,8 +24,11 @@ pub struct Config{
 
     pub client_raw_images_dir: String,
     pub client_encoded_images_dir: String,
+    pub client_high_quality_receive_dir:String,
     pub client_decoded_images_dir: String,
     pub client_low_quality_images_dir: String,
+    pub client_low_quality_receive_dir: String,
+
 
     pub address_client_tx: String,
     pub address_client_rx: String,
@@ -79,8 +82,11 @@ impl Config {
 
         let client_raw_images_dir = env::var("CLIENT_RAW_IMAGES_DIR").expect("CLIENT_RAW_IMAGES_DIR not set");
         let client_encoded_images_dir = env::var("CLIENT_ENCODED_IMAGES_DIR").expect("CLIENT_ENCODED_IMAGES_DIR not set");
+        let client_high_quality_receive_dir = env::var("CLIENT_HIGH_QUALITY_RECEIVE_DIR").expect("CLIENT_HIGH_QUALITY_RECEIVE_DIR not set");
+
         let client_decoded_images_dir = env::var("CLIENT_DECODED_IMAGES_DIR").expect("CLIENT_DECODED_IMAGES_DIR not set");
         let client_low_quality_images_dir = env::var("CLIENT_LOW_QUALITY_IMAGES_DIR").expect("CLIENT_DECODED_IMAGES_DIR not set");
+        let client_low_quality_receive_dir = env::var("CLIENT_LOW_QUALITY_RECEIVE_DIR").expect("CLIENT_LOW_QUALITY_RECEIVE_DIR not set");
 
         let server_ip_1 = env::var("SERVER_IP_1").expect("SERVER_IP_1 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
         let server_ip_2 = env::var("SERVER_IP_2").expect("SERVER_IP_2 not set").parse::<Ipv4Addr>().expect("Invalid server ip");
@@ -107,7 +113,9 @@ impl Config {
             client_raw_images_dir,
             client_encoded_images_dir,
             client_decoded_images_dir,
+            client_high_quality_receive_dir,
             client_low_quality_images_dir,
+            client_low_quality_receive_dir,
             address_client_tx,
             address_client_rx,
             address_client_image_request_rx,

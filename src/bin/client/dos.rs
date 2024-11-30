@@ -14,6 +14,8 @@ use std::io::Write;
 use std::io::Read;
 use std::fs;
 use serde::Deserialize;
+use std::str::FromStr; 
+
 
 #[derive(Debug, Deserialize)]
 pub struct Client {
@@ -210,6 +212,31 @@ pub fn print_clients(clients: Vec<Client>) {
     for client in clients {
         println!("Client {}. {}", client.id, client.username);
     }
+}
+
+pub fn get_ip_by_username(username: &str) -> Result<String, std::io::Error> {
+    let json_path = "clients_request.json";
+    let json_data = fs::read_to_string(json_path)?;
+
+    let clients: Vec<Client> = serde_json::from_str(&json_data)?;
+
+    for client in clients {
+        if client.username == username {
+            return Ok(client.ip);
+        }
+    }
+
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Username not found"))
+}
+
+pub fn get_ip_by_username_as_ipv4(username: &str) -> Result<Ipv4Addr, std::io::Error> {
+    // Get the IP address associated with the username
+    let ip_str = get_ip_by_username(username)?;
+
+    // Parse the string into an Ipv4Addr
+    Ipv4Addr::from_str(&ip_str).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid IP address format")
+    })
 }
 
 

@@ -70,8 +70,6 @@ pub async fn request_list_images(socket: &Socket, config: &Config, client_ip: Ip
 }
 
 
-
-
 pub async fn request_image(
     socket: &Socket,
     config: &Config,
@@ -81,25 +79,30 @@ pub async fn request_image(
     client_port: u16,
     is_high: bool
 ) -> io::Result<()> {
+    // Determine the request message based on the quality flag
     let request_message = if is_high {
         format!("GET H {}", image_name)
     } else {
         format!("GET L {}", image_name)
     };
 
+    // Determine the correct path for saving the image
+    let received_path = if is_high {
+        async_std::path::PathBuf::from(&config.client_high_quality_receive_dir)
+    } else {
+        async_std::path::PathBuf::from(&config.client_low_quality_receive_dir)
+    };
+
     // Attempt to send the image request
-    //low quality
-    let low_path = async_std::path::PathBuf::from(config.client_low_quality_images_dir.clone());
-    match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip,client_port, &request_message, low_path.clone()).await {
+    match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip, client_port, &request_message, received_path.clone()).await {
         Ok(_) => {
-            // If the request is successful, proceed to sending the image
-            image_com::receive_image(socket, config, sending_socket, low_path).await?;
+            // If the request is successful, proceed to receiving and saving the image
+            image_com::receive_image(socket, config, sending_socket, received_path).await?;
             Ok(())
         }
         Err(e) => {
             // If there is an error in sending the request, handle the error
             eprintln!("Failed to send image request: {}", e);
-            // Optionally, you can try to recover, retry, or just return the error
             Err(e)
         }
     }
