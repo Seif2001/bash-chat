@@ -1,4 +1,5 @@
 use std::io::{self, Write};
+use async_std::path::Path;
 use base64::read;
 use mini_redis::client;
 use time::convert::Nanosecond;
@@ -48,9 +49,11 @@ async fn main() -> io::Result<()> {
          let sending_socket = socket.new_client_socket().await;
          let image_name = "image3.png";
         // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"ahmed")?;
+        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"yehia")?;
         let client_port = config.port_client_image_request_rx;
         let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
+        let high_path = Path::new(&config.client_high_quality_receive_dir).join(&image_name);
+        image_processor::display_image(&high_path.display().to_string());
         // // Respond to "Image Name"
         //let _ =api::receive_image_request(&socket, &config).await;
         loop{}

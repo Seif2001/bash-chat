@@ -230,10 +230,8 @@ pub fn get_ip_by_username(username: &str) -> Result<String, std::io::Error> {
 }
 
 pub fn get_ip_by_username_as_ipv4(username: &str) -> Result<Ipv4Addr, std::io::Error> {
-    // Get the IP address associated with the username
     let ip_str = get_ip_by_username(username)?;
 
-    // Parse the string into an Ipv4Addr
     Ipv4Addr::from_str(&ip_str).map_err(|_| {
         std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid IP address format")
     })
