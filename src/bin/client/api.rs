@@ -10,12 +10,8 @@ use crate::{image_com, middleware};
 use serde::{Serialize, Deserialize};
 use std::fs::{self, File};
 
-#[derive(Serialize, Deserialize)]
-struct ImageRequest {
-    client_ip: Ipv4Addr,
-    image_name: String,
-    is_high: bool,
-}
+use crate::dos;
+use crate::image_processor;
 
 pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::Result<()> {
     let start = "START".to_string();
@@ -89,11 +85,8 @@ pub async fn request_image(
     is_high: bool
 ) -> io::Result<()> {
     // Determine the request message based on the quality flag
-    let image_request = ImageRequest {
-        client_ip,
-        image_name: image_name.clone(),
-        is_high,
-    };
+    let client_username = dos::get_username_by_ip(&client_ip.to_string()).unwrap();
+    let _ = image_processor::write_into_json(client_username, image_name.to_string(), is_high);
     // Serialize the struct to a JSON string
     // let json_data = serde_json::to_string(&image_request).expect("Failed to serialize data");
 
@@ -125,12 +118,7 @@ pub async fn request_image(
         Ok(_) => {
             // If the request is successful, proceed to receiving and saving the image
             image_com::receive_image(socket, config, sending_socket, received_path).await?;
-            // Clear the file by opening it again and truncating it
-            // let mut file = File::create(file_path)?;  // This truncates the file to 0 size
-            // file.write_all(b"")?;  // Writing an empty byte slice to clear the file
-
-            // // Optionally log the file is cleared
-            // println!("File cleared: {}", file_path);
+            let _ = image_processor::clear_file("images_requests_unfinished");
             Ok(())
         }
         Err(e) => {
