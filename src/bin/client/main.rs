@@ -22,38 +22,41 @@ pub mod frontend;
 use crate::config::Config;
 use crate::socket::Socket;
 
-// #[tokio::main]
-// //#[show_image::main]
+#[tokio::main]
+//#[show_image::main]
 
-// async fn main() -> io::Result<()> {
-    //     // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
-    //     // dos::register_dos(&socket, &config).await?;
-    //     // dos::request_dos(&socket, &config).await?;
-    //     // let mut clients = dos::parse_clients("clients_request.json",&config.username);
-    //     // dos::print_clients(clients);
-    //     // let leader_ip:Ipv4Addr= middleware::recv_leader(&socket, &config).await;
-    //     // println!("Leader is {} ", leader_ip);
-    //     // println!("Before send images");
-    //     // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
-    //     // println!("After send images");
-    //     // image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
-    //     // let client_ip = Ipv4Addr::new(10, 7, 16, 43);
-    //     // api::request_list_images(&socket, &config, client_ip).await?;
+async fn main() -> io::Result<()> {
+    let config = Config::new();
+    let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
+    let config = Config::new();
+        // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
+        dos::register_dos(&socket, &config).await?;
+        dos::request_dos(&socket, &config).await?;
+        // let mut clients = dos::parse_clients("clients_request.json",&config.username);
+        // dos::print_clients(clients);
+        // let leader_ip:Ipv4Addr= middleware::recv_leader(&socket, &config).await;
+        // println!("Leader is {} ", leader_ip);
+        // println!("Before send images");
+        // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+        // println!("After send images");
+        // image_store::create_json_for_images(&config.client_raw_images_dir, "my_images.json").unwrap();
+        // let client_ip = Ipv4Addr::new(10, 7, 16, 43);
+        // api::request_list_images(&socket, &config, client_ip).await?;
     
-    //     // Client 2 Config
-    //     // Respond to "image Request"
-    //     // middleware::p2p_recv_image_request(&socket, &config).await?;
-    //     // let sending_socket = socket.new_client_socket().await;
-    //     // let image_name = "image3.png";
-    //     // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-    //     // let client_port = config.port_client_image_request_rx;
-    //     // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
-    //     // // Respond to "Image Name"
-    //     middleware::p2p_recv_request(&socket, &config).await?;
+        // Client 2 Config
+        // Respond to "image Request"
+        // middleware::p2p_recv_image_request(&socket, &config).await?;
+        // let sending_socket = socket.new_client_socket().await;
+        // let image_name = "image3.png";
+        // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
+        // let client_port = config.port_client_image_request_rx;
+        // let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
+        // // Respond to "Image Name"
+        middleware::p2p_recv_request(&socket, &config).await?;
     
     
-    //     Ok(())
-    // }
+        Ok(())
+    }
     
     // use async_std::fs::File;
     // use chrono::format;
@@ -63,105 +66,105 @@ use crate::socket::Socket;
     //     hierchy: u32,
     //     name: String,
     //     client: Option<Client>, // Add a client field to store the current client
-    // }
+//     // }
     
-    #[tokio::main]
-    #[show_image::main]
-    async fn main() {
-    //     let mut curr_dir = Directory {
-    //         hierchy: 0,
-    //         name: "root".to_string(),
-    //         client: None
-    //     };
-    //     let config = Config::new();
-    //     let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
-    //     let config = Config::new();
+//     #[tokio::main]
+//     #[show_image::main]
+//     async fn main() {
+//     //     let mut curr_dir = Directory {
+//     //         hierchy: 0,
+//     //         name: "root".to_string(),
+//     //         client: None
+//     //     };
+//     //     let config = Config::new();
+//     //     let socket = Socket::new(config.address_server_1, config.address_server_2, config.address_server_3, config.address_client_leader_rx, config.address_client_tx, config.address_client_rx,config.address_client_dos_tx,config.address_client_dos_rx, config.address_client_image_request_rx).await;
+//     //     let config = Config::new();
 
-    //     let mut rl = rustyline::DefaultEditor::new().expect("Err");
-    //     let socket = Arc::new(socket);
-    //     loop{
-    //         let format_dir = format!("{}>> ", curr_dir.name);
-    //         let readline = rl.readline(format_dir.as_str());
-    //         let socket = socket.clone();
-    //         let config = Config::new();
+//     //     let mut rl = rustyline::DefaultEditor::new().expect("Err");
+//     //     let socket = Arc::new(socket);
+//     //     loop{
+//     //         let format_dir = format!("{}>> ", curr_dir.name);
+//     //         let readline = rl.readline(format_dir.as_str());
+//     //         let socket = socket.clone();
+//     //         let config = Config::new();
             
-    //         match readline {
-    //         Ok(line) => match line.as_str() {
-    //             "ls" => {
-    //                 if curr_dir.hierchy == 0 {
-    //                     if let Err(e) = request_print_clients(socket, config).await {
-    //                         println!("Error: {}", e);
-    //                     }
-    //                 }
-    //                 else if curr_dir.hierchy == 1{
-    //                     if let Some(client) = &curr_dir.client {
-    //                         ls_command(socket, config, client).await;
-    //                     }
-    //                 }
-    //                 else {
-    //                     println!("No command");
-    //                 }
-    //             },
-    //             line if line.starts_with("cd") => {
-    //                 let new_dir = line.split(" ").collect::<Vec<&str>>()[1];
-    //                 if new_dir == ".." {
-    //                     if curr_dir.hierchy == 0 {
-    //                         println!("Cannot go back");
-    //                     } else {
-    //                         let new_dir = curr_dir.name.split("/").collect::<Vec<&str>>()[0..curr_dir.hierchy as usize].join("/");
-    //                         curr_dir.name = new_dir;     
-    //                         curr_dir.hierchy -= 1;
-    //                         curr_dir.client = None;
-    //                     }
-    //                 } else {
-    //                     if curr_dir.hierchy == 0 {
-    //                         let client_name = new_dir.to_string();
-    //                         let new_dir = format!("{}/{}", curr_dir.name, new_dir);
-    //                         match load_client(client_name.clone()).await {
-    //                             Ok(client) => {
-    //                                 // Successfully loaded the client
-    //                                 curr_dir.client = Some(client);  // Save the client in `curr_dir`
-    //                                 curr_dir.name = new_dir;  // Update the directory name
-    //                                 curr_dir.hierchy += 1;  // Increase the hierarchy level
-    //                             }
-    //                             Err(e) => {
-    //                                 // Handle the error (e.g., client not found or file errors)
-    //                                 println!("Error loading client: {}", e);
-    //                             }
-    //                         }
+//     //         match readline {
+//     //         Ok(line) => match line.as_str() {
+//     //             "ls" => {
+//     //                 if curr_dir.hierchy == 0 {
+//     //                     if let Err(e) = request_print_clients(socket, config).await {
+//     //                         println!("Error: {}", e);
+//     //                     }
+//     //                 }
+//     //                 else if curr_dir.hierchy == 1{
+//     //                     if let Some(client) = &curr_dir.client {
+//     //                         ls_command(socket, config, client).await;
+//     //                     }
+//     //                 }
+//     //                 else {
+//     //                     println!("No command");
+//     //                 }
+//     //             },
+//     //             line if line.starts_with("cd") => {
+//     //                 let new_dir = line.split(" ").collect::<Vec<&str>>()[1];
+//     //                 if new_dir == ".." {
+//     //                     if curr_dir.hierchy == 0 {
+//     //                         println!("Cannot go back");
+//     //                     } else {
+//     //                         let new_dir = curr_dir.name.split("/").collect::<Vec<&str>>()[0..curr_dir.hierchy as usize].join("/");
+//     //                         curr_dir.name = new_dir;     
+//     //                         curr_dir.hierchy -= 1;
+//     //                         curr_dir.client = None;
+//     //                     }
+//     //                 } else {
+//     //                     if curr_dir.hierchy == 0 {
+//     //                         let client_name = new_dir.to_string();
+//     //                         let new_dir = format!("{}/{}", curr_dir.name, new_dir);
+//     //                         match load_client(client_name.clone()).await {
+//     //                             Ok(client) => {
+//     //                                 // Successfully loaded the client
+//     //                                 curr_dir.client = Some(client);  // Save the client in `curr_dir`
+//     //                                 curr_dir.name = new_dir;  // Update the directory name
+//     //                                 curr_dir.hierchy += 1;  // Increase the hierarchy level
+//     //                             }
+//     //                             Err(e) => {
+//     //                                 // Handle the error (e.g., client not found or file errors)
+//     //                                 println!("Error loading client: {}", e);
+//     //                             }
+//     //                         }
                             
-    //                     }
-    //                 }
-    //             },
-    //             line if line.starts_with("see") => {
-    //                 let image_name = line.split(" ").collect::<Vec<&str>>()[1];
-    //                 if curr_dir.hierchy == 1 {
-    //                     if let Some(client) = &curr_dir.client {
-    //                         request_see_image(socket, config, client, image_name, false).await;
+//     //                     }
+//     //                 }
+//     //             },
+//     //             line if line.starts_with("see") => {
+//     //                 let image_name = line.split(" ").collect::<Vec<&str>>()[1];
+//     //                 if curr_dir.hierchy == 1 {
+//     //                     if let Some(client) = &curr_dir.client {
+//     //                         request_see_image(socket, config, client, image_name, false).await;
                             
-    //                     }
-    //                 }
-    //             },
-    //             line if line.starts_with("request") => {
-    //                 let image_name = line.split(" ").collect::<Vec<&str>>()[1];
-    //                 if curr_dir.hierchy == 1 {
-    //                     if let Some(client) = &curr_dir.client {
-    //                         request_see_image(socket, config, client, image_name, true).await;
+//     //                     }
+//     //                 }
+//     //             },
+//     //             line if line.starts_with("request") => {
+//     //                 let image_name = line.split(" ").collect::<Vec<&str>>()[1];
+//     //                 if curr_dir.hierchy == 1 {
+//     //                     if let Some(client) = &curr_dir.client {
+//     //                         request_see_image(socket, config, client, image_name, true).await;
                             
-    //                     }
-    //                 }
-    //             },
-    //             "exit" => break,
-    //             _ => println!("No command"),
-    //         },
-    //         Err(_) => println!("No input"),
-    //     }
-    // }
+//     //                     }
+//     //                 }
+//     //             },
+//     //             "exit" => break,
+//     //             _ => println!("No command"),
+//     //         },
+//     //         Err(_) => println!("No input"),
+//     //     }
+//     // }
 
-    frontend::run().await;
+//     frontend::run().await;
     
     
-}
+// }
 
 
 // #[derive(Deserialize, Debug)]
