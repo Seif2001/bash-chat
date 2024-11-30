@@ -71,3 +71,18 @@ fn save_history_table(history: &[HistoryEntry]) -> io::Result<()> {
     Ok(())
 }
 
+pub fn mark_as_sent(my_username: &str, requester_username: &str, image_name: &str) -> io::Result<()> {
+    let mut history = read_history_table()?;
+    
+    for entry in history.iter_mut() {
+        if entry.my_username == my_username
+            && entry.requester_username == requester_username
+            && entry.image_name == image_name {
+            entry.is_sent = true;
+            break; 
+        }
+    }
+
+    save_history_table(&history)
+}
+

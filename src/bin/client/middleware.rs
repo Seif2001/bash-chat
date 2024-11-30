@@ -310,7 +310,13 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
                 let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
 
-                image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
+                if let Ok(_) = image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await {
+                    println!("Image sent successfully!");
+                    let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
+                } else {
+                    println!("Failed to send image.");
+                }
+                //image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
 
             } else {
                 eprintln!("Received non-IPv4 address: {}", src);

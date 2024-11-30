@@ -50,10 +50,10 @@ async fn main() -> io::Result<()> {
         // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
         let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"newuser")?;
         let client_port = config.port_client_image_request_rx;
-        let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
+        //let _ = api::request_image(&socket, &config, sending_socket, image_name.to_string(), client_ip, client_port, false).await;
         // // Respond to "Image Name"
-        middleware::p2p_recv_request(&socket, &config).await?;
-    
+        let _ =api::receive_image_request(&socket, &config).await;
+        loop{}
     
         Ok(())
     }

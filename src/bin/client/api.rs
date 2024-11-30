@@ -108,3 +108,18 @@ pub async fn request_image(
     }
 }
 
+
+
+pub async fn receive_image_request(
+    socket: &Socket,
+    config: &Config,
+) {
+    match middleware::p2p_recv_request(socket, config).await {
+        Ok(_) => {
+        }
+        Err(e) => {
+            // Log the error but don't stop the program
+            eprintln!("error: {}", e);
+        }
+    }
+}

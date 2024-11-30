@@ -3,7 +3,7 @@ use rand::seq::index;
 use tokio::net::UdpSocket;
 use crate::config::{self, Config};
 use crate::socket::{self, Socket};
-use crate::{com, image_processor};
+use crate::{com, history_table, image_processor};
 use std::fs::create_dir_all;
 use std::net::Ipv4Addr;
 use async_std::sync::Arc;
@@ -14,6 +14,8 @@ use std::convert::TryInto;
 use std::io::Write;
 use tokio::sync::Mutex;
 use image_processor::decode_image;
+use tokio::time::{timeout, Duration};
+
 // send to leader image
 
 pub async fn send_images_from_to(
@@ -205,7 +207,6 @@ fn decode_received_image(encoded_image_path: &str) {
     println!(" --  Image successfully decoded and saved as '{}'", output_image_path);
 }
 
-//Sending
 pub async fn send_image_name(
     socket: Arc<Mutex<UdpSocket>>,
     image_name: &str,
@@ -213,27 +214,52 @@ pub async fn send_image_name(
     server_port: u16,
 ) -> Result<u16, std::io::Error> {
     let dest = (server_ip, server_port);
+    
+    // Send the image name to the server
     com::send(&socket, image_name.to_string(), dest).await?;
 
-    let (ack, src) = com::recv(&socket).await?;
-    if ack.trim() != "NAME_ACK" {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "Failed to receive NAME_ACK",
-        ));
-    }
+    // Set a timeout for receiving the acknowledgment
+    let timeout_duration = Duration::from_secs(5);  // Timeout after 5 seconds
+    let result = timeout(timeout_duration, com::recv(&socket)).await;
 
-    let src_ip = match src {
-        std::net::SocketAddr::V4(addr) => addr.ip().clone(),
-        std::net::SocketAddr::V6(addr) => {
-            panic!("Expected Ipv4Addr but got Ipv6Addr: {}", addr)
+    match result {
+        Ok(Ok((ack, src))) => {
+            // Check if the acknowledgment is correct
+            if ack.trim() != "NAME_ACK" {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Failed to receive NAME_ACK",
+                ));
+            }
+
+            // Extract the IP and port from the source address
+            let src_ip = match src {
+                std::net::SocketAddr::V4(addr) => addr.ip().clone(),
+                std::net::SocketAddr::V6(addr) => {
+                    panic!("Expected Ipv4Addr but got Ipv6Addr: {}", addr)
+                }
+            };
+
+            let src_port = src.port();
+
+            println!("Image name '{}' sent and acknowledged.", image_name);
+            Ok(src_port)
+        },
+        Ok(Err(_)) => {
+            // Handle an error during `com::recv` (if any)
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Failed to receive acknowledgment",
+            ))
         }
-    };
-
-    let src_port = src.port();
-
-    println!("Image name '{}' sent and acknowledged.", image_name);
-    Ok((src_port))
+        Err(_) => {
+            // Timeout occurred
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "Timed out waiting for NAME_ACK",
+            ))
+        }
+    }
 }
 
 pub async fn send_image_chunk(
@@ -243,34 +269,49 @@ pub async fn send_image_chunk(
     server_ip: Ipv4Addr,
     server_port: u16,
 ) -> Result<(), std::io::Error> {
-     // Prepare the chunk index as a byte array
-     let mut data_with_index = chunk_index.to_be_bytes().to_vec();
-     // Append the chunk data
-     data_with_index.extend_from_slice(chunk_data);
-     
+    let timeout_duration = Duration::from_secs(5);
+
+    let mut data_with_index = chunk_index.to_be_bytes().to_vec();
+    data_with_index.extend_from_slice(chunk_data);
+
     let dest = (server_ip, server_port);
-    
-    println!("size of chunk: {}", data_with_index.len());
+
+    println!("Size of chunk: {}", data_with_index.len());
     com::send_vec(&socket, data_with_index, dest).await?;
     println!("Chunk {} sent.", chunk_index);
-    let (ack, _) = com::recv(&socket).await?;
-    let ack_index: u32 = ack
-        .trim()
-        .parse()
-        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ACK received"))?;
 
-    if ack_index != chunk_index {
-        return Err(std::io::Error::new(
+    let ack_result = timeout(timeout_duration, com::recv(&socket)).await;
+
+    match ack_result {
+        Ok(Ok((ack, _src))) => {
+            // Parse the ACK to check for chunk index
+            let ack_index: u32 = ack
+                .trim()
+                .parse()
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid ACK received"))?;
+
+            if ack_index != chunk_index {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Chunk index mismatch: expected {}, got {}",
+                        chunk_index, ack_index
+                    ),
+                ));
+            }
+
+            println!("Chunk {} sent and acknowledged.", chunk_index);
+            Ok(())
+        }
+        Ok(Err(_)) => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!(
-                "Chunk index mismatch: expected {}, got {}",
-                chunk_index, ack_index
-            ),
-        ));
+            "Failed to receive valid ACK",
+        )),
+        Err(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "Timeout waiting for ACK",
+        )),
     }
-
-    println!("Chunk {} sent and acknowledged.", chunk_index);
-    Ok(())
 }
 pub async fn send_image(
     socket: &Socket,
@@ -284,35 +325,62 @@ pub async fn send_image(
     let image_path = format!("{}/{}", path, image_name);
     let socket = socket.new_client_socket().await;
     let socket_clone = socket.clone();
-    let server_port  = send_image_name(socket, &image_name, server_ip, server_port).await?;
-    let mut file = File::open(image_path).await?;
+    
+    let server_port = match send_image_name(socket, &image_name, server_ip, server_port).await {
+        Ok(port) => port,
+        Err(e) => {
+            println!("Failed to send image name: {}", e);
+            return Err(e); // Early exit if image name sending fails
+        }
+    };
+
+    let mut file = match File::open(image_path).await {
+        Ok(f) => f,
+        Err(e) => {
+            println!("Failed to open file: {}", e);
+            return Err(e);
+        }
+    };
+
     let mut file_contents = Vec::new();
-    file.read_to_end(&mut file_contents).await?;
-    println!("File read into memory, size: {} bytes", file_contents.len());
+    match file.read_to_end(&mut file_contents).await {
+        Ok(_) => println!("File read into memory, size: {} bytes", file_contents.len()),
+        Err(e) => {
+            println!("Failed to read file: {}", e);
+            return Err(e); // Early exit if file read fails
+        }
+    };
 
     let mut chunk_index: u32 = 0;
 
     for chunk in file_contents.chunks(chunk_size) {
-        send_image_chunk(
+        match send_image_chunk(
             socket_clone.clone(),
             chunk, // Current chunk
             chunk_index,
             server_ip,
             server_port,
-        )
-        .await?;
-
-        chunk_index += 1;
+        ).await {
+            Ok(_) => {
+                chunk_index += 1; // Increment chunk index on success
+            }
+            Err(e) => {
+                // Print the error and exit
+                println!("Failed to send chunk {}: {}", chunk_index, e);
+                return Err(e); // Early exit on failure
+            }
+        }
     }
-    
-    // Send an "END" marker to signal the completion of the image transmission
+
     let dest = (server_ip, server_port);
-    com::send(&socket_clone, "END".to_string(), dest).await?;
-    println!("END marker sent. Image transmission complete.");
+    if let Err(e) = com::send(&socket_clone, "END".to_string(), dest).await {
+        println!("Failed to send END marker: {}", e);
+        return Err(e); // Early exit if END marker fails
+    }
+    println!("Image transmission complete.");
 
-    Ok((socket_clone))
+    Ok(socket_clone)
 }
-
 // pub async fn recv_image_client(
 //     socket: &Socket,
 //     config: &Config,
