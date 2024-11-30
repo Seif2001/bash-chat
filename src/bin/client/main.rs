@@ -7,6 +7,9 @@ use tokio::sync::Mutex;
 use tokio::task;
 use std::net::{SocketAddr, UdpSocket, Ipv4Addr};
 use std::sync::Arc;
+use serde::{Serialize, Deserialize};
+use std::{fs::File};
+use std::{io::{Read}};
 pub mod config;
 pub mod socket;
 pub mod com;
@@ -22,6 +25,72 @@ pub mod frontend;
 
 use crate::config::Config;
 use crate::socket::Socket;
+
+// Struct representing the image request data
+#[derive(Serialize, Deserialize, Debug)]
+struct ImageRequest {
+    client_username: String,
+    image_name: String,
+    is_high: bool,
+}
+fn write_into_json(client_username: String, image_name: String, is_high: bool) -> io::Result<()>{
+    let image_request = ImageRequest {
+        client_username,
+        image_name: image_name.clone(),
+        is_high,
+    };
+    // Serialize the struct to a JSON string
+    let json_data = serde_json::to_string(&image_request).expect("Failed to serialize data");
+
+    // Specify the file path to write the JSON data
+    let file_path = "image_requests_unfinished.json";
+
+    // Create or overwrite the file with the JSON data
+    let mut file = File::create(file_path)?;
+
+    // Write the JSON string to the file
+    file.write_all(json_data.as_bytes())?;
+    println!("Data written to JSON: {}", json_data);
+    Ok(())
+}
+
+// Function to read and deserialize the JSON file
+fn read_image_requests(file_path: &str) -> io::Result<Vec<ImageRequest>> {
+    let mut file = File::open(file_path)?;
+    
+    // Check if the file is empty
+    let metadata = file.metadata()?;
+    if metadata.len() == 0 {
+        return Ok(Vec::new()); // Return an empty vector if the file is empty
+    }
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    
+    // Try to deserialize the contents
+    match serde_json::from_str::<Vec<ImageRequest>>(&contents) {
+        // If it's a valid array of requests, return it
+        Ok(requests) => Ok(requests),
+        // If the JSON is not an array, check if it's an object (map)
+        Err(_) => {
+            // Try to deserialize as a single map entry or handle specific error
+            match serde_json::from_str::<ImageRequest>(&contents) {
+                Ok(request) => Ok(vec![request]), // Return a single item as a vec
+                Err(e) => {
+                    eprintln!("Error deserializing JSON: {}", e);
+                    Err(io::Error::new(io::ErrorKind::InvalidData, "Failed to parse JSON"))
+                }
+            }
+        }
+    }
+}
+
+// Function to clear the file (optional, if you want to clear the file after processing)
+fn clear_file(file_path: &str) -> io::Result<()> {
+    let mut file = File::create(file_path)?;  // This will truncate the file to 0 size
+    file.write_all(b"")?;  // Optionally write an empty byte slice to clear the file
+    Ok(())
+}
 
 #[tokio::main]
 //#[show_image::main]
@@ -44,11 +113,29 @@ async fn main() -> io::Result<()> {
     let config = Arc::new(config);
     let socket_arc = Arc::new((socket));
     // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
-    //dos::register_dos(&socket_arc, &config).await?;
-    //dos::request_dos(&socket_arc, &config).await?;
-
+    dos::register_dos(&socket_arc, &config).await?;
+    dos::request_dos(&socket_arc, &config).await?;
     let socket_arc_clone = Arc::clone(&socket_arc);
     let config_clone = Arc::clone(&config);
+
+    // After calling request_dos, check if there are any pending image requests in the JSON file
+    let json_path = "image_requests_unfinished.json";
+    let requests = match read_image_requests(json_path) {
+        Ok(requests) => requests,
+        Err(e) => {
+            eprintln!("Failed to read or parse the JSON file: {}", e);
+            return Err(e);
+        }
+    };
+    // If there are any requests in the JSON, re-issue those image requests
+    for request in requests {
+        // Assuming `request_image` is the function to send a request
+        println!("Making the request for image: {}", request.image_name);
+        let sending_socket = socket_arc.new_client_socket().await;
+        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&request.client_username)?;
+        let _ = api::request_image(&socket_arc, &config, sending_socket, request.image_name, client_ip, config.port_client_image_request_rx, request.is_high).await;
+    }
+    let _ = clear_file(json_path);
     // let _ = tokio::spawn({
     //     async move {
     //         let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
@@ -71,17 +158,21 @@ async fn main() -> io::Result<()> {
         // Client 2 Config
         // Respond to "image Request"
         // middleware::p2p_recv_image_request(&socket, &config).await?;
-         let sending_socket = socket_arc.new_client_socket().await;
-         let image_name = "image3.png";
+        let sending_socket = socket_arc.new_client_socket().await;
+        let image_name = "image3.png";
         // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"yehia")?;
+        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"zyehia")?;
         let client_port = config.port_client_image_request_rx;
-        //let _ = api::request_image(&socket_arc, &config, sending_socket, image_name.to_string(), client_ip, client_port, true).await;
+        let client_username = dos::get_username_by_ip(&client_ip.to_string());
+        let is_bool = true;
+        let _ = write_into_json(client_username.unwrap(), image_name.to_string(), is_bool);
+        let _ = api::request_image(&socket_arc, &config, sending_socket, image_name.to_string(), client_ip, client_port, true).await;
+        let _ = clear_file(json_path);
         //let high_path = Path::new(&config.client_high_quality_receive_dir).join(&image_name);
         //image_processor::display_image(&high_path.display().to_string());
         // // Respond to "Image Name"
-        //let _ =api::receive_image_request(&socket, &config).await;
-        println!("{:?}",        image_processor::get_views(config_clone.client_high_quality_receive_dir.clone() + "/image3.png"));
+        //let _ =api::receive_image_request(&socket_arc, &config).await;
+        //println!("{:?}",        image_processor::get_views(config_clone.client_high_quality_receive_dir.clone() + "/image3.png"));
            loop{}
 
         Ok(())

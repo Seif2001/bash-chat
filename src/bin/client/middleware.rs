@@ -274,11 +274,15 @@ pub async fn p2p_send_image_request(
         let sending_socket = sending_socket.clone();
         let ack_tx = ack_tx.clone();
         async move {
+            let mut attempts_here =0;
             loop {
                 // Apply timeout to the receive operation
                 let receive_result = timeout(receive_timeout, com::recv(&sending_socket)).await;
-                if attempts >= max_retries {
+                if attempts_here >= max_retries {
                     break;
+                }
+                else{
+                    attempts_here+=1;
                 }
                 match receive_result {
                     Ok(Ok((response, _src))) => {
