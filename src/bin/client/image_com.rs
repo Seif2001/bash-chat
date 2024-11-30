@@ -183,7 +183,7 @@ pub async fn receive_image(
                 println!("Image saved at: {:?}", image_path);
                 file.flush().await?;
                 // decode_received_image(image_path.to_str().unwrap());
-                break;
+                return Ok(());
             }
         }
     }

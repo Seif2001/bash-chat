@@ -8,7 +8,7 @@ use crate::config::Config;
 
 pub async fn send(socket: &Arc<Mutex<UdpSocket>>, message: String, dest: (std::net::Ipv4Addr, u16)) -> std::io::Result<()> {
     let socket = socket.lock().await;
-    println!("Sending message: {} to {}:{}", message, dest.0, dest.1);
+    //println!("Sending message: {} to {}:{}", message, dest.0, dest.1);
     socket.send_to(message.as_bytes(), dest).await?;
 
     Ok(())

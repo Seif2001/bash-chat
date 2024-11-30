@@ -264,8 +264,10 @@ pub async fn p2p_send_image_request(socket: &Socket, sending_socket: Arc<Mutex<U
 
         tokio::select! {
             _ = ack_rx.recv() => {
-                println!("Acknowledgment received, moving to next step.");
-                image_com::receive_image(socket, config, sending_socket, path).await?;
+                // println!("Acknowledgment received, moving to next step.");
+                // image_com::receive_image(socket, config, sending_socket, path).await?;
+                // println!("Image received successfully.");
+                // return Ok(())
                 break;
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
@@ -273,7 +275,6 @@ pub async fn p2p_send_image_request(socket: &Socket, sending_socket: Arc<Mutex<U
             }
         }
     }
-
     Ok(())
 }
 
@@ -388,7 +389,7 @@ pub async fn p2p_send_list_images_request(socket: &Socket, config: &Config, clie
                 let response = response.trim();
 
                 if response == "ack_list" {
-                    println!("Received acknowledgment '{}' from {}", response, src);
+                    //println!("Received acknowledgment '{}' from {}", response, src);
                     let _ = ack_tx.send(true); // Signal acknowledgment received
                     break;
                 } else {
@@ -401,12 +402,12 @@ pub async fn p2p_send_list_images_request(socket: &Socket, config: &Config, clie
     // Retry loop to send the request
     loop {
         let dest = (client_address, config.port_client_image_request_rx);   
-        println!("Sending 'GET LIST' to {}:{}", dest.0, dest.1);
+        //println!("Sending 'GET LIST' to {}:{}", dest.0, dest.1);
         com::send(&socket_client_tx, message.to_string(), dest).await?;
 
         tokio::select! {
             _ = ack_rx.recv() => {
-                println!("Acknowledgment received, moving to next step.");
+                //println!("Acknowledgment received, moving to next step.");
                 break;
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
@@ -421,20 +422,20 @@ pub async fn p2p_send_list_images_request(socket: &Socket, config: &Config, clie
 pub async fn p2p_recv_list_images(socket_recv: Arc<Mutex<UdpSocket>>) -> std::io::Result<()> {
     let socket_client_rx = socket_recv.clone();
 
-    loop {
+   
         let (message, _src) = com::recv(&socket_client_rx).await?;
         let message = message.trim();
 
         // Process the received message, which is expected to be a JSON string.
         match process_json_message(message).await {
             Ok(_) => {
-                println!("Successfully processed message.");
+                //println!("Successfully processed message.");
             },
             Err(e) => {
                 eprintln!("Error processing message: {}", e);
             }
         }
-    }
+    
 
     Ok(())
 }
@@ -452,7 +453,7 @@ async fn write_to_file(filename: &str, content: &str) -> std::io::Result<()> {
 
     file.write_all(content.as_bytes())?;
 
-    println!("Successfully wrote to {}", filename);
+    //println!("Successfully wrote to {}", filename);
     Ok(())
 }
 

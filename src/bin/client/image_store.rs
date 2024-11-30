@@ -123,7 +123,7 @@ fn add_image_to_json(json_file: &str, image_name: &str, views: u32) {
 }
 
 
-fn display_images_data(json_file: &str) {
+pub fn display_images_data(json_file: &str) {
     let file_content = match fs::read_to_string(json_file) {
         Ok(content) => content,
         Err(_) => {
@@ -138,9 +138,8 @@ fn display_images_data(json_file: &str) {
             return;
         }
     };
-    println!("Images and their views:");
     for entry in image_data {
-        println!("Image: {}, Views: {}", entry.image, entry.views);
+        println!("{}", entry.image);
     }
 }
 

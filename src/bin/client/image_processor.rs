@@ -71,7 +71,7 @@ pub fn display_image(image_path: &str) {
     if let Ok(img) = image::open(image_path) {
         let img = img.to_rgb(); // Convert to RGB format
         let (width, height) = img.dimensions();
-
+        
         let window = create_window("Image Viewer", Default::default()).unwrap();
 
         let image_info = ImageInfo::rgb8(width, height);

@@ -54,7 +54,7 @@ pub async fn request_list_images(socket: &Socket, config: &Config, client_ip: Ip
     // Try to send the image list request and handle errors
     match middleware::p2p_send_list_images_request(socket, config, client_ip, &request_message, socket_tx_rx).await {
         Ok(_) => {
-            println!("Image list request sent successfully. Now waiting for the list of images.");
+            //println!("Image list request sent successfully. Now waiting for the list of images.");
 
             // If sending was successful, try to receive the image list
             if let Err(e) = middleware::p2p_recv_list_images(socket_tx_rx_clone).await {
