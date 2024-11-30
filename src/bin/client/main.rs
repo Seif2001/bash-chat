@@ -45,11 +45,15 @@ async fn main() -> io::Result<()> {
     dos::register_dos(&socket_arc, &config).await?;
     dos::request_dos(&socket_arc, &config).await?;
 
+    let socket_arc_clone = Arc::clone(&socket_arc);
+    let config_clone = Arc::clone(&config);
     let _ = tokio::spawn({
         async move {
-            middleware::p2p_recv_request(&socket_arc, &config).await;
+            let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
         }
     });
+    dos::request_dos(&socket_arc, &config).await?;
+
     loop{}
             // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
 
