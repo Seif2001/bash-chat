@@ -175,7 +175,8 @@ pub async fn request_dos(socket: &Socket, config: &Config) -> std::io::Result<()
 
     Ok(())
 }
-pub fn parse_clients(json_path: &str, curr_client: &str) -> Vec<Client>{
+pub fn parse_clients(curr_client: &str) -> Vec<Client>{
+    let json_path = "clients_request.json";
     let json_data = fs::read_to_string(json_path)
         .expect("Failed to read JSON file from the provided path");
 
@@ -190,6 +191,20 @@ pub fn parse_clients(json_path: &str, curr_client: &str) -> Vec<Client>{
     filtered_clients
 }
 
+pub fn get_username_by_ip(ip: &str) -> Result<String, std::io::Error> {
+    let json_path = "clients_request.json";
+    let json_data = fs::read_to_string(json_path)?;
+
+    let clients: Vec<Client> = serde_json::from_str(&json_data)?;
+
+    for client in clients {
+        if client.ip == ip {
+            return Ok(client.username);
+        }
+    }
+
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "IP address not found"))
+}
 
 pub fn print_clients(clients: Vec<Client>) {
     for client in clients {

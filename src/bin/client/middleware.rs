@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use crate::config::{self, Config};
 use crate::socket::{self, Socket};
-use crate::{com, image_processor};
+use crate::{com, dos, image_processor};
 use crate::image_com;
 use std::fs::{File, read_dir, create_dir_all};
 use std::path::Path;
@@ -16,6 +16,7 @@ use std::io::Write;
 use std::io::Read;
 use serde_json::Value; // For deserializing the received JSON (if needed)
 use serde::{Serialize, Deserialize};
+use crate::history_table;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json;
@@ -304,6 +305,11 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
                 println!("After send images");
                 // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+                //save to history table
+                //_ = dos::request_dos(&socket, &config).await;
+                let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
+                let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
+
                 image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
 
             } else {

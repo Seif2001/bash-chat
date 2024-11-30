@@ -11,6 +11,7 @@ pub mod socket;
 pub mod com;
 pub mod middleware;
 pub mod image_com;
+pub mod history_table;
 pub mod dos;
 pub mod api;
 mod image_processor;
