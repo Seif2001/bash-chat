@@ -86,3 +86,13 @@ pub fn mark_as_sent(my_username: &str, requester_username: &str, image_name: &st
     save_history_table(&history)
 }
 
+
+pub fn get_requesters_by_image(image_name: &str) -> io::Result<Vec<String>> {
+    let history = read_history_table()?;
+    let requesters: Vec<String> = history.iter()
+        .filter(|entry| entry.image_name == image_name)
+        .map(|entry| entry.requester_username.clone())
+        .collect();
+    
+    Ok(requesters)
+}

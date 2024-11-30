@@ -353,15 +353,15 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 println!("Sent acknowledgment to {}", src);
 
                 let path = config.client_encoded_images_dir.clone();
-                //send_cloud(&socket, &config,&"START".to_string()).await?;
-                //let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                send_cloud(&socket, &config,&"START".to_string()).await?;
+                let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
                 //save to history table
                 //_ = dos::request_dos(&socket, &config).await;
-                //let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
-                //let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
-                //image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+                let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
+                let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
+                image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
                 // println!("After send images");
-                println!("after hist table");
+                //println!("after hist table");
                 let temp_image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
                 // Define the path to the JSON file
                 let json_path = "my_images.json"; // Replace with the actual path to the JSON file
@@ -437,6 +437,47 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 eprintln!("Received non-IPv4 address: {}", src);
             }
         }
+        else if message.starts_with("UPDATE VIEWS ") {
+            let data = message.trim_start_matches("UPDATE VIEWS ").trim().to_string();
+        
+            println!("Received image view update request from {}", src);
+        
+            if data.is_empty() {
+                println!("No data provided");
+                continue;
+            }
+        
+            let parts: Vec<&str> = data.split_whitespace().collect();
+        
+            if parts.len() < 2 {
+                println!("Invalid data format. Expected: image_name number_of_views");
+                continue;
+            }
+        
+            let image_name = parts[0].to_string();
+            let number_of_views: u32 = match parts[1].parse() {
+                Ok(num) => num,
+                Err(_) => {
+                    println!("Invalid number of views: {}", parts[1]);
+                    continue;
+                }
+            };
+        
+            let response = "ack_request";
+            let sending_socket = socket.new_client_socket().await;
+        
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                // Assuming image_processor::update_views accepts the image path and the views count
+                let image_path = config.client_high_quality_receive_dir.to_owned() + &image_name;
+                //image_processor::update_views(&image_path, number_of_views);
+        
+                // Send acknowledgment back
+                com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+        }
+        
             
         
         else {

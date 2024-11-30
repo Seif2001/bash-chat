@@ -166,6 +166,23 @@ pub fn get_views(encoded_image_path: String) -> std::io::Result<u32> {
     Ok(views)
 }
 
+// pub fn update_views(encoded_image_path: String) -> std::io::Result<u32> {
+//     let mut file = File::open(&encoded_image_path)?;
+//     let metadata = file.metadata()?;
+//     let mut buffer = vec![0; metadata.len() as usize];
+//     file.read(&mut buffer)?;
+//     if buffer.len() < 4 {
+//         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Insufficient data to extract views"));
+//     }
+//     let views_bytes = &buffer[buffer.len() - 4..];
+//     let views = u32::from_be_bytes(views_bytes.try_into().unwrap());
+//     let image_data = &buffer[..buffer.len() - 4];
+//     // let mut output_file = File::create(encoded_image_path)?;
+//     // output_file.write_all(image_data)?;
+//     //println!("Image saved without views. Number of views extracted: {}", views);
+
+//     Ok(views)
+// }
 pub fn write_into_json(client_username: String, image_name: String, is_high: bool) -> std::io::Result<()>{
     let image_request = ImageRequest {
         client_username,
