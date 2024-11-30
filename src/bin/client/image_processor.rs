@@ -1,4 +1,5 @@
 extern crate steganography;
+use std::fs::OpenOptions;
 use std::path::Path;
 use std::path::PathBuf;
 use std::io::BufReader;
@@ -113,4 +114,44 @@ pub fn resize_image(input_path: &str, output_dir: &str) -> Result<(), Error> {
             Err(e)
         }
     }
+}
+
+pub fn append_views(encoded_image_path: String, output_image_path: String, views: u32) {
+    let mut f = File::open(&encoded_image_path).expect("No file found");
+    let metadata = metadata(&encoded_image_path).expect("Unable to read metadata");
+    let mut buffer = vec![0; metadata.len() as usize];
+    f.read(&mut buffer).expect("Buffer overflow");
+
+    let views_bytes = views.to_be_bytes();
+    buffer.extend_from_slice(&views_bytes);
+
+    let mut output_file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(output_image_path)
+        .expect("Failed to create output file");
+
+    output_file
+        .write_all(&buffer)
+        .expect("Failed to write to output file");
+
+    // println!("Image and views appended. The new file has been saved to {}", output_image_path);
+}
+
+pub fn get_views(encoded_image_path: String) -> std::io::Result<u32> {
+    let mut file = File::open(&encoded_image_path)?;
+    let metadata = file.metadata()?;
+    let mut buffer = vec![0; metadata.len() as usize];
+    file.read(&mut buffer)?;
+    if buffer.len() < 4 {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Insufficient data to extract views"));
+    }
+    let views_bytes = &buffer[buffer.len() - 4..];
+    let views = u32::from_be_bytes(views_bytes.try_into().unwrap());
+    let image_data = &buffer[..buffer.len() - 4];
+    let mut output_file = File::create(encoded_image_path)?;
+    output_file.write_all(image_data)?;
+    println!("Image saved without views. Number of views extracted: {}", views);
+
+    Ok(views)
 }
