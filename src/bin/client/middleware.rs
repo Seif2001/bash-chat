@@ -4,7 +4,7 @@ use mini_redis::server;
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, Mutex};
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, timeout, Duration};
 use crate::config::{self, Config};
 use crate::socket::{self, Socket};
 use crate::{com, dos, image_processor};
@@ -235,49 +235,78 @@ pub async fn recv_leader(socket: &Socket, config: &Config) -> Ipv4Addr {
 }
 
 //P2P Communication
-// Function for sending an "image Request" to Client 2
-pub async fn p2p_send_image_request(socket: &Socket, sending_socket: Arc<Mutex<UdpSocket>>, config:&Config, client_address: Ipv4Addr, client_port: u16, message: &String, path: PathBuf) -> std::io::Result<()> {
-    // Broadcast channel to signal when acknowledgment is received
+// Function for sending an "image Request" to Client 2use tokio::time::{timeout, Duration};
+
+pub async fn p2p_send_image_request(
+    socket: &Socket,
+    sending_socket: Arc<Mutex<UdpSocket>>,
+    config: &Config,
+    client_address: Ipv4Addr,
+    client_port: u16,
+    message: &String,
+    path: PathBuf,
+) -> std::io::Result<()> {
     let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
+    let max_retries = 5; // Number of retries
+    let mut attempts = 0;
+    let receive_timeout = Duration::from_secs(1); // Timeout duration for receiving
 
     // Task to listen for acknowledgment
     tokio::spawn({
         let sending_socket = sending_socket.clone();
-        let ack_tx = ack_tx.clone(); // Clone the broadcast transmitter
+        let ack_tx = ack_tx.clone();
         async move {
             loop {
-                let (response, src) = com::recv(&sending_socket).await.expect("Failed to receive message");
-                let response = response.trim();
+                // Apply timeout to the receive operation
+                let receive_result = timeout(receive_timeout, com::recv(&sending_socket)).await;
 
-                if response == "ack_request" {
-                    let _ = ack_tx.send(true); // Signal acknowledgment received
-                    break;
-                } else {
-                    println!("Received unexpected response '{}'", response);
+                match receive_result {
+                    Ok(Ok((response, _src))) => {
+                        let response = response.trim();
+                        if response == "ack_request" {
+                            let _ = ack_tx.send(true); // Signal acknowledgment received
+                            break;
+                        } else {
+                            println!("Received unexpected response: '{}'", response);
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        println!("Error receiving message: {}", e);
+                    }
+                    Err(_) => {
+                        println!("Timeout waiting for acknowledgment");
+                    }
                 }
             }
         }
     });
-    loop {
+
+    while attempts < max_retries {
+        attempts += 1;
         println!("Sending image request to {}:{}", client_address, client_port);
         let dest = (client_address, client_port);
-        com::send(&sending_socket, message.to_string(), dest).await?;
+        {
+            com::send(&sending_socket, message.to_string(), dest).await?;
+        }
 
         tokio::select! {
             _ = ack_rx.recv() => {
-                // println!("Acknowledgment received, moving to next step.");
-                // image_com::receive_image(socket, config, sending_socket, path).await?;
-                // println!("Image received successfully.");
-                // return Ok(())
+                println!("Acknowledgment received.");
                 break;
             }
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(5)) => {
-                println!("Timeout, resending 'image Request'...");
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                println!("Timeout waiting for acknowledgment, resending request... Attempt {}/{}", attempts, max_retries);
             }
         }
     }
+
+    if attempts >= max_retries {
+        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Max retries reached"));
+    }
+
     Ok(())
 }
+
 
 
 pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Result<()> {
