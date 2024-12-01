@@ -131,6 +131,8 @@ pub async fn request_image(
 
 
 
+
+
 pub async fn receive_image_request(
     socket: &Socket,
     config: &Config,
@@ -144,3 +146,18 @@ pub async fn receive_image_request(
         }
     }
 }
+
+pub async fn request_update_views(socket: &Socket,config: &Config,sending_socket: Arc<Mutex<UdpSocket>>,image_name: String,client_ip: Ipv4Addr,client_port: u16,views: u32) -> io::Result<()> {
+    let request_message = format!("UPDATE VIEWS {} {}", views, image_name);
+
+    // Send the request message using the existing function
+    match middleware::p2p_single_send_update_views_request(socket, sending_socket.clone(), config, client_ip, client_port, &request_message).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // If there is an error in sending the request, handle the error
+            eprintln!("Failed to send update request: {}", e);
+            Err(e)
+        }
+    }
+}
+
