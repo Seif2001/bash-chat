@@ -22,7 +22,6 @@ mod image_processor;
 mod image_store;
 pub mod frontend;
 
-
 use crate::config::Config;
 use crate::socket::Socket;
 

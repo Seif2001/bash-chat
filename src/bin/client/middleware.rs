@@ -16,8 +16,12 @@ use std::io::Write;
 use std::io::Read;
 use serde_json::Value; // For deserializing the received JSON (if needed)
 use serde::{Serialize, Deserialize};
+<<<<<<< HEAD
 use crate::history_table;
 use crate::frontend;
+=======
+use tokio::fs::read_to_string;
+>>>>>>> 24e35b2c24006c5441bb9b10cf74bdd330f3baa1
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json;
@@ -111,6 +115,24 @@ async fn get_views_for_image(image_name: &str, json_path: &str) -> Result<u32, s
 // }
 
 // send to 3 servers
+
+async fn get_views_for_image(image_name: &str, json_path: &str) -> Result<u32, std::io::Error> {
+    // Read the JSON file asynchronously
+    let file_contents = read_to_string(json_path).await?;
+    
+    // Parse the JSON into a vector of ImageEntry objects
+    let image_entries: Vec<Image> = serde_json::from_str(&file_contents)?;
+
+    // Search for the image entry by image name and return the views
+    for entry in image_entries {
+        if entry.image == image_name {
+            return Ok(entry.views);
+        }
+    }
+    
+    // If image is not found, return a default value (e.g., 0 views)
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Image not found"))
+}
 
 pub async fn send_cloud(socket: &Socket, config: &Config, message: &String)  -> std::io::Result<()>  {
     let socket_server_1 = &socket.new_client_socket().await;
@@ -508,11 +530,11 @@ pub async fn p2p_recv_request_copy(socket: &Socket, config: &Config) -> std::io:
             let sending_socket = socket.new_client_socket().await;
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
-                let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                // let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
                 let path = config.client_encoded_images_dir.clone();
                 send_cloud(&socket, &config,&"START".to_string()).await?;
                 let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
-                println!("Before send images");
+                // println!("Before send images");
                 image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
                 println!("After send images");
                 // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
@@ -549,9 +571,9 @@ pub async fn p2p_recv_request_copy(socket: &Socket, config: &Config) -> std::io:
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
                 let image_path = Path::new(&config.client_raw_images_dir).join(&image_name);
                 let low_image_path = Path::new(&config.client_low_quality_images_dir).join(&image_name);
-                println!("Creating low image: {}", low_image_path.display());
-                println!("input path: {}", image_path.display());
-                image_processor::resize_image(image_path.to_str().unwrap(), low_image_path.to_str().unwrap()); //add low image directory
+                // println!("Creating low image: {}", low_image_path.display());
+                // println!("input path: {}", image_path.display());
+                let _ = image_processor::resize_image(image_path.to_str().unwrap(), low_image_path.to_str().unwrap()); //add low image directory
                 let low_path = config.client_low_quality_images_dir.clone();
                 image_com::send_image(socket, &image_name, &low_path, ipv4_src, src.port(), 1020, config).await?;
             } else {
