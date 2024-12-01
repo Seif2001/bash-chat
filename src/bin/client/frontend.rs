@@ -4,19 +4,28 @@ use bincode::config;
 use chrono::format;
 use async_std::io::ReadExt;
 use serde::Deserialize;
+use tokio::sync::Mutex;
 
 use std::io::{self, Write};
 use base64::{display, read};
 use mini_redis::client;
 use time::convert::Nanosecond;
 use tokio::task;
-use std::net::{SocketAddr, UdpSocket, Ipv4Addr};
+use std::net::{SocketAddr, Ipv4Addr};
+use tokio::net::UdpSocket;
 use std::sync::Arc;
 use crate::config::Config;
 use crate::dos::get_ip_by_username;
 use crate::{api, dos, image_processor, image_store, middleware};
 use crate::socket::Socket;
 use crate::history_table;
+
+
+pub async fn new_client_socket() -> Arc<Mutex<UdpSocket>>{
+    // bind random available port
+    let socket = Arc::new(Mutex::new(UdpSocket::bind("0.0.0.0:0").await.expect("Error binding")));
+    socket
+}
 
     struct Directory {
         hierchy: u32,
@@ -195,8 +204,16 @@ use crate::history_table;
                         }
                     }
                 },
+                line if line.starts_with("update") => {
+                    let image_name = line.split(" ").collect::<Vec<&str>>()[1];
+                    let views = line.split(" ").collect::<Vec<&str>>()[2].parse::<u32>().unwrap();
+                    let socket_send = new_client_socket().await;
+                    api::request_update_views(&socket, &config, socket_send, image_name.to_string(), config.port_client_image_request_rx, views).await.unwrap();
+                },
                 "exit" => break,
                 _ => println!("No command"),
+
+
             },
             Err(_) => println!("No input"),
         }

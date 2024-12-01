@@ -68,7 +68,13 @@ async fn main() -> io::Result<()> {
         println!("Making the request for image: {}", request.image_name);
         let sending_socket = socket_arc.new_client_socket().await;
         let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&request.client_username)?;
+        let image_name = request.image_name.clone();
         let _ = api::request_image(&socket_arc, &config_clone, sending_socket, request.image_name, client_ip, config_clone.port_client_image_request_rx, request.is_high).await;
+        let config = Config::new();
+        if !request.is_high{
+            image_processor::display_image(&(config.client_low_quality_receive_dir.clone() + "/" + &image_name));
+        }
+        
     }
     let socket_arc_clone = Arc::clone(&socket_arc);
     let config_clone = Arc::clone(&config_arc);

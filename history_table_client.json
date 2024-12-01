@@ -1,36 +1,3 @@
 [
-  {
-    "my_username": "omar",
-<<<<<<< HEAD
-    "requester_username": "imposter",
-    "image_name": "image3.png",
-    "is_sent": true
-  },
-  {
-    "my_username": "omar",
-    "requester_username": "yehiaz",
-    "image_name": "image3.png",
-    "is_sent": true
-=======
-    "requester_username": "yehiaz",
-    "image_name": "image3.png",
-    "is_sent": false
->>>>>>> frontend
-  },
-  {
-    "my_username": "omar",
-    "requester_username": "yehiaz",
-    "image_name": "image3.png",
-    "is_sent": false
-  },
-  {
-    "my_username": "omar",
-<<<<<<< HEAD
-    "requester_username": "imposter",
-=======
-    "requester_username": "yehiaz",
->>>>>>> frontend
-    "image_name": "image3.png",
-    "is_sent": false
-  }
+  
 ]
