@@ -108,13 +108,13 @@ pub async fn get_approved_request_by_number(number: usize) -> io::Result<(String
     let requests: Vec<RequestEntry> = serde_json::from_str(&contents).expect("Error parsing JSON");
 
     // Filter out the approved requests
-    let approved_requests: Vec<RequestEntry> = requests.into_iter()
-        .filter(|request| request.is_approved)  // Keep only approved requests
+    let mut approved_requests: Vec<RequestEntry> = requests.into_iter()
+        .filter(|request| !request.is_approved)  // Keep only approved requests
         .collect();
-
     // Ensure that the number is within the bounds of the approved requests
+    let number = number -1;
     if number < approved_requests.len() {
-        
+        approved_requests[number].is_approved = true;
         Ok((approved_requests[number].image_name.clone(), approved_requests[number].requester_username.clone(), approved_requests[number].port))  // Return the nth approved request
     } else {
         Err(io::Error::new(io::ErrorKind::NotFound, "Request not found"))
