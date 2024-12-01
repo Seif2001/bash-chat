@@ -185,18 +185,9 @@ pub async fn recv_image_chunk(
 ) -> Result<Option<u32>, std::io::Error> {
     let socket_client_rx = sending_socket.clone();
 
-<<<<<<< HEAD
     let (buf, src,amt) = com::recv_raw_amt(&socket_client_rx).await?;
     let len = amt;
     println!("Received chunk of size {} bytes.", len);
-=======
-    let (buf, src, amt) = com::recv_raw_size(&socket_client_rx).await?;
-    let len = amt as usize;
-    println!("Received chunk of size {} {} ", len, amt);
-    if amt <1024 {
-        println!("Received LAST chunk of size {} {:?} ", len, buf);
-    }
->>>>>>> 24e35b2c24006c5441bb9b10cf74bdd330f3baa1
     if &buf[..3] == b"END" {
         println!("Received 'END' marker. Transmission completed.");
         return Ok(None); // Signal the end of transmission

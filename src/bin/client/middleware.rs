@@ -16,12 +16,8 @@ use std::io::Write;
 use std::io::Read;
 use serde_json::Value; // For deserializing the received JSON (if needed)
 use serde::{Serialize, Deserialize};
-<<<<<<< HEAD
 use crate::history_table;
 use crate::frontend;
-=======
-use tokio::fs::read_to_string;
->>>>>>> 24e35b2c24006c5441bb9b10cf74bdd330f3baa1
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json;
