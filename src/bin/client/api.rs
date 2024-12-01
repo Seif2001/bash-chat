@@ -12,6 +12,7 @@ use std::fs::{self, File};
 
 use crate::dos;
 use crate::image_processor;
+use crate::history_table;
 
 pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::Result<()> {
     let start = "START".to_string();
@@ -147,15 +148,40 @@ pub async fn receive_image_request(
     }
 }
 
-pub async fn request_update_views(socket: &Socket,config: &Config,sending_socket: Arc<Mutex<UdpSocket>>,image_name: String,client_ip: Ipv4Addr,client_port: u16,views: u32) -> io::Result<()> {
-    let request_message = format!("UPDATE VIEWS {} {}", image_name, views);
+pub async fn request_update_views(socket: &Socket,config: &Config,sending_socket: Arc<Mutex<UdpSocket>>,image_name: String,client_port: u16,views: u32) -> io::Result<()> {
+    // Step 1: Read history_table_client.json and parse it
+    let history = history_table::read_history_table()?;
 
-    match middleware::p2p_single_send_update_views_request(socket, sending_socket.clone(), config, client_ip, client_port, &request_message).await {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            eprintln!("Failed to send update request: {}", e);
-            Err(e)
+    // Step 2: Filter entries where image_name matches
+    let requester_usernames: Vec<String> = history.iter()
+        .filter(|entry| entry.image_name == image_name)
+        .map(|entry| entry.requester_username.clone())
+        .collect();
+
+    // Step 3: Loop through each requester_username and send the request
+    for requester_username in requester_usernames {
+        // Create the request message
+        let request_message = format!("UPDATE VIEWS {} {}", image_name, views);
+        let client_ip = dos::get_ip_by_username_as_ipv4(&requester_username)?;
+        // Send the request to each requester
+        match middleware::p2p_single_send_update_views_request(
+            socket,
+            sending_socket.clone(),
+            config,
+            client_ip,
+            client_port,
+            &request_message,
+        ).await {
+            Ok(_) => println!("Update sent to {}", requester_username),
+            Err(e) => {
+                // Log the error but continue processing other requests
+                eprintln!("Failed to send update request to {}: {}", requester_username, e);
+                return Err(e);  // Ensure the error is returned properly
+            }
         }
     }
+
+    // Return Ok if all requests were sent successfully
+    Ok(())
 }
 

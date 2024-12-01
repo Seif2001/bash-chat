@@ -187,7 +187,7 @@ pub async fn recv_image_chunk(
 
     let (buf, src,amt) = com::recv_raw_amt(&socket_client_rx).await?;
     let len = amt;
-    println!("Received chunk of size {} bytes.", len);
+    // println!("Received chunk of size {} bytes.", len);
     if &buf[..3] == b"END" {
         println!("Received 'END' marker. Transmission completed.");
         return Ok(None); // Signal the end of transmission
@@ -341,9 +341,9 @@ pub async fn send_image_chunk(
 
     let dest = (server_ip, server_port);
 
-    println!("Size of chunk: {}", data_with_index.len());
+    // println!("Size of chunk: {}", data_with_index.len());
     com::send_vec(&socket, data_with_index, dest).await?;
-    println!("Chunk {} sent.", chunk_index);
+    // println!("Chunk {} sent.", chunk_index);
 
     let ack_result = timeout(timeout_duration, com::recv(&socket)).await;
 
@@ -365,7 +365,7 @@ pub async fn send_image_chunk(
                 ));
             }
 
-            println!("Chunk {} sent and acknowledged.", chunk_index);
+            // println!("Chunk {} sent and acknowledged.", chunk_index);
             Ok(())
         }
         Ok(Err(_)) => Err(std::io::Error::new(
