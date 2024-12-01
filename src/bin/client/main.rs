@@ -74,7 +74,7 @@ async fn main() -> io::Result<()> {
     let image_name = "image3.png";
     let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"yehiaz")?;
     let client_port = config.port_client_image_request_rx;
-    let _ = api::request_update_views(&socket_arc, &config, sending_socket, image_name.to_string(), client_ip, client_port,12).await;
+    let _ = api::request_update_views(&socket_arc, &config, sending_socket, image_name.to_string(), client_port,12).await;
         
            loop{}
 

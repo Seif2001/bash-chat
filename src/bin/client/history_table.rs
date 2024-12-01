@@ -55,7 +55,7 @@ pub fn delete_history_entry(my_username: &str, requester_username: &str, image_n
     save_history_table(&history)
 }
 
-fn read_history_table() -> io::Result<Vec<HistoryEntry>> {
+pub fn read_history_table() -> io::Result<Vec<HistoryEntry>> {
     if Path::new(HISTORY_FILE_PATH).exists() {
         let mut file = fs::File::open(HISTORY_FILE_PATH)?;
         let mut content = String::new();
