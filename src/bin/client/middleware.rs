@@ -467,7 +467,7 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
             let sending_socket = socket.new_client_socket().await;
         
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
-                let image_path = config.client_high_quality_receive_dir.to_owned() + &image_name;
+                let image_path = config.client_high_quality_receive_dir.to_owned() + "/" + &image_name;
                 let _ =image_processor::update_views(image_path, number_of_views);
         
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
