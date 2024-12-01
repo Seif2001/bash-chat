@@ -79,28 +79,17 @@ pub async fn request_list_images(socket: &Socket, config: &Config, client_ip: Ip
 pub async fn request_image(
     socket: &Socket,
     config: &Config,
-    sending_socket: Arc<Mutex<UdpSocket>>,
+    sending_socket: Arc<Mutex<UdpSocket>>, // Arc around sending socket
     image_name: String,
     client_ip: Ipv4Addr,
     client_port: u16,
     is_high: bool
 ) -> io::Result<()> {
-    // Determine the request message based on the quality flag
+    // Get the client's username
     let client_username = dos::get_username_by_ip(&client_ip.to_string()).unwrap();
     let _ = image_processor::write_into_json(client_username, image_name.to_string(), is_high);
-    // Serialize the struct to a JSON string
-    // let json_data = serde_json::to_string(&image_request).expect("Failed to serialize data");
 
-    // // Specify the file path to write the JSON data
-    // let file_path = "image_requests_unfinished.json";
-
-    // // Create or overwrite the file with the JSON data
-    // let mut file = File::create(file_path)?;
-
-    // // Write the JSON string to the file
-    // file.write_all(json_data.as_bytes())?;
-    // println!("Data written to JSON: {}", json_data);
-
+    // Prepare the request message
     let request_message = if is_high {
         format!("GET H {}", image_name)
     } else {
@@ -113,9 +102,8 @@ pub async fn request_image(
     } else {
         async_std::path::PathBuf::from(&config.client_low_quality_receive_dir)
     };
-
     // Attempt to send the image request
-    match middleware::p2p_send_image_request(socket, sending_socket.clone(), config, client_ip, client_port, &request_message, received_path.clone()).await {
+    match middleware::p2p_send_image_request(&socket, sending_socket.clone(), config, client_ip, client_port, &request_message, received_path.clone()).await {
         Ok(_) => {
             // If the request is successful, proceed to receiving and saving the image
             image_com::receive_image(socket, config, sending_socket, received_path).await?;

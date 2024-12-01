@@ -13,8 +13,10 @@ use tokio::task;
 use std::net::{SocketAddr, UdpSocket, Ipv4Addr};
 use std::sync::Arc;
 use crate::config::Config;
-use crate::{api, dos, image_processor, image_store};
+use crate::dos::get_ip_by_username;
+use crate::{api, dos, image_processor, image_store, middleware};
 use crate::socket::Socket;
+use crate::history_table;
 
     struct Directory {
         hierchy: u32,
@@ -48,6 +50,7 @@ use crate::socket::Socket;
                     if curr_dir.hierchy == 0 {
                         println!("clients");
                         println!("resources");
+                        println!("current_requests");
                     }
                     else
                     if curr_dir.hierchy == 1 {
@@ -59,6 +62,9 @@ use crate::socket::Socket;
                         else if curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "resources"{
                             println!("my_images");
                             println!("requested_images");
+                        }
+                        else if curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "current_requests"{
+                            history_table::read_and_print_unapproved_requests().await;
                         }
                         
                     }
@@ -119,6 +125,11 @@ use crate::socket::Socket;
                                 curr_dir.hierchy += 1;
                                 
                             }
+                            else if next_dir == "current_requests"{
+                                let new_dir = format!("{}/{}", curr_dir.name, new_dir);
+                                curr_dir.name = new_dir;
+                                curr_dir.hierchy += 1;
+                            }
                         }
                         else
                         if curr_dir.hierchy == 1 && curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "clients" {
@@ -170,6 +181,20 @@ use crate::socket::Socket;
                         }
                     }
                 },
+                line if line.starts_with("approve") => {
+                    let req_number = line.split(" ").collect::<Vec<&str>>()[1];
+                    
+                    match history_table::get_approved_request_by_number(req_number.parse::<usize>().unwrap()).await {
+                        Ok((image_name, client_name, client_port)) => {
+                            let client_ip = get_ip_by_username(client_name.as_str()).unwrap();
+                            let client_ip = client_ip.parse::<Ipv4Addr>().expect("Invalid IP address format");
+                            middleware::send_image(&*socket, &image_name, client_ip, client_port, 1020, &config).await.unwrap();
+                        }
+                        Err(e) => {
+                            println!("Error: {}", e);
+                        }
+                    }
+                },
                 "exit" => break,
                 _ => println!("No command"),
             },
@@ -179,6 +204,8 @@ use crate::socket::Socket;
     
     
 }
+
+
 
 
 #[derive(Deserialize, Debug)]

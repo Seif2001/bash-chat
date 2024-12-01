@@ -23,7 +23,13 @@ mod image_store;
 pub mod frontend;
 
 use crate::config::Config;
-use crate::socket::Socket;
+use crate::socket::{Socket};
+
+pub async fn new_client_socket() -> Arc<Mutex<UdpSocket>>{
+    // bind random available port
+    let socket = Arc::new(Mutex::new(UdpSocket::bind("0.0.0.0:0").expect("Error binding")));
+    socket
+}
 
 #[tokio::main]
 #[show_image::main]
@@ -46,7 +52,7 @@ async fn main() -> io::Result<()> {
     let socket_arc = Arc::new(socket);
     // // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
     dos::register_dos(&socket_arc, &config_arc).await?;
-    // dos::request_dos(&socket_arc, &config).await?;
+    dos::request_dos(&socket_arc, &config_arc).await?;
 
     let socket_arc_clone = Arc::clone(&socket_arc);
     let config_clone = Arc::clone(&config_arc);
@@ -56,6 +62,11 @@ async fn main() -> io::Result<()> {
         }
     });
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+
+    
+>>>>>>> frontend
     // dos::request_dos(&socket_arc, &config).await?;
     // // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
     // // println!("Leader is {} ", leader_ip);
