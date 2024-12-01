@@ -118,7 +118,7 @@ pub async fn request_image(
         Ok(_) => {
             // If the request is successful, proceed to receiving and saving the image
             image_com::receive_image(socket, config, sending_socket, received_path).await?;
-            let _ = image_processor::clear_file("images_requests_unfinished");
+            let _ = image_processor::clear_file("images_requests_unfinished.json");
             Ok(())
         }
         Err(e) => {

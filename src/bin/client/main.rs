@@ -70,11 +70,14 @@ async fn main() -> io::Result<()> {
         let _ = api::request_image(&socket_arc, &config, sending_socket, request.image_name, client_ip, config.port_client_image_request_rx, request.is_high).await;
     }
     let _ = image_processor::clear_file(json_path);
-    // let _ = tokio::spawn({
-    //     async move {
-    //         let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
-    //     }
-    // });
+    let _ = tokio::spawn({
+        async move {
+            let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
+        }
+    });
+    //image_processor::update_views("/home/seifelshabshiri@auc.egy/dev/bash-chat/src/bin/client/high_quality_receive/image3.png".to_string(), 5);
+
+
     //dos::request_dos(&socket_arc, &config).await?;
     // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
     // println!("Leader is {} ", leader_ip);
@@ -95,9 +98,10 @@ async fn main() -> io::Result<()> {
         let sending_socket = socket_arc.new_client_socket().await;
         let image_name = "image3.png";
         // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"zyehia")?;
+        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"omar")?;
         let client_port = config.port_client_image_request_rx;
-        let _ = api::request_image(&socket_arc, &config, sending_socket, image_name.to_string(), client_ip, client_port, true).await;
+        //let _ = api::request_image(&socket_arc, &config, sending_socket, image_name.to_string(), client_ip, client_port, true).await;
+        image_processor::update_views("/home/seifelshabshiri@auc.egy/dev/bash-chat/src/bin/client/high_quality_receive/image3.png".to_string(), 3);
         //let high_path = Path::new(&config.client_high_quality_receive_dir).join(&image_name);
         //image_processor::display_image(&high_path.display().to_string());
         // // Respond to "Image Name"

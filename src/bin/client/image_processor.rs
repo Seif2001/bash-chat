@@ -176,11 +176,7 @@ pub fn update_views(encoded_image_path: String, updated_views: u32) -> std::io::
 
 
     let views = get_views(encoded_image_path)?;
-    if updated_views > views {
-        append_views(encoded_image_path_1,encoded_image_path_2, updated_views);
-    } else {
-        append_views(encoded_image_path_3,encoded_image_path_4, views);
-    }
+    append_views(encoded_image_path_1,encoded_image_path_2, updated_views);
 
     Ok(())
 } pub fn write_into_json(client_username: String, image_name: String, is_high: bool) -> std::io::Result<()>{

@@ -455,7 +455,9 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
             }
         
             let image_name = parts[0].to_string();
+            println!("number of views: {:?}", parts[1]);
             let number_of_views: u32 = match parts[1].parse() {
+                
                 Ok(num) => num,
                 Err(_) => {
                     println!("Invalid number of views: {}", parts[1]);
@@ -467,8 +469,13 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
             let sending_socket = socket.new_client_socket().await;
         
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
-                let image_path = config.client_high_quality_receive_dir.to_owned() + &image_name;
+                println!("before image path");
+                let image_path = config.client_high_quality_receive_dir.to_owned() + "/" + &image_name;
+                println!("{}",image_path);
+                println!("after image path");
+
                 let _ =image_processor::update_views(image_path, number_of_views);
+                
         
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
             } else {
