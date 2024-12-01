@@ -69,20 +69,74 @@ pub fn decode_image(path_input: String, output_file: String) {
 
 
 pub fn display_image(image_path: &str) {
-    if let Ok(img) = image::open(image_path) {
-        let img = img.to_rgb(); // Convert to RGB format
-        let (width, height) = img.dimensions();
-        
-        let window = create_window("Image Viewer", Default::default()).unwrap();
+    println!("Displaying image: {}", image_path);
+    
+    // Ensure the path is correct
+    let path = Path::new(image_path);
+    if !path.exists() {
+        println!("Error: File does not exist at path: {}", image_path);
+        return;
+    }
 
-        let image_info = ImageInfo::rgb8(width, height);
-        let image_view = ImageView::new(image_info, &img);
-        window.set_image("Image", image_view).unwrap();
-    } else {
-        println!("Failed to load image.");
+    if !path.is_file() {
+        println!("Error: Provided path is not a file: {}", image_path);
+        return;
+    }
+
+    // Step 1: Attempt to open the image file as raw bytes to detect format issues
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(e) => {
+            println!("Failed to open file: {}", e);
+            return;
+        }
+    };
+
+    let mut bytes = Vec::new();
+    if let Err(e) = file.read_to_end(&mut bytes) {
+        println!("Failed to read file: {}", e);
+        return;
+    }
+
+
+
+    // Step 3: Try to detect the format using `image` crate
+    match image::load_from_memory(&bytes) {
+        Ok(img) => {
+            let img = img.to_rgb(); // Convert to RGB format
+            let (width, height) = img.dimensions();
+
+
+            // Here you would display the image in a window, assuming a valid windowing library
+            // Example using a hypothetical image viewer library
+            let window = create_window("Image Viewer", Default::default()).unwrap();
+
+            let image_info = ImageInfo::rgb8(width, height);
+            let image_view = ImageView::new(image_info, &img);
+            window.set_image("Image", image_view).unwrap();
+        },
+        Err(e) => {
+            // Detailed error message for invalid signature or other issues
+            println!("Failed to load image: {}", e);
+        }
     }
 }
 
+
+
+
+pub fn display_image_no_save(image: Vec<u8>) {
+    
+    let img = image::load_from_memory(&image).expect("Failed to load image").to_rgb(); // Convert to RGB format
+    let (width, height) = img.dimensions();
+    
+    let window = create_window("Image Viewer", Default::default()).unwrap();
+
+    let image_info = ImageInfo::rgb8(width, height);
+    let image_view = ImageView::new(image_info, &img);
+    window.set_image("Image", image_view).unwrap();
+    
+}
 
 pub fn resize_image(input_path: &str, output_dir: &str) -> Result<(), Error> {
     // Create the output directory if it doesn't exist
@@ -138,6 +192,29 @@ pub fn append_views(encoded_image_path: String, output_image_path: String, views
     // println!("Image and views appended. The new file has been saved to {}", output_image_path);
 }
 
+// pub fn append_views(encoded_image_path: String, output_image_path: String, views: u32) {
+//     let mut f = File::open(&encoded_image_path).expect("No file found");
+//     let metadata = metadata(&encoded_image_path).expect("Unable to read metadata");
+//     let mut buffer = vec![0; metadata.len() as usize];
+//     f.read(&mut buffer).expect("Buffer overflow");
+
+//     let views_bytes = views.to_be_bytes();
+//     buffer.extend_from_slice(&views_bytes);
+
+//     let mut output_file = OpenOptions::new()
+//         .create(true)
+//         .write(true)
+//         .open(output_image_path)
+//         .expect("Failed to create output file");
+
+//     output_file
+//         .write_all(&buffer)
+//         .expect("Failed to write to output file");
+
+//     // println!("Image and views appended. The new file has been saved to {}", output_image_path);
+// }
+
+
 pub fn get_views(encoded_image_path: String) -> std::io::Result<u32> {
     let mut file = File::open(&encoded_image_path)?;
     let metadata = file.metadata()?;
@@ -155,3 +232,23 @@ pub fn get_views(encoded_image_path: String) -> std::io::Result<u32> {
 
     Ok(views)
 }
+
+pub fn decode_image_no_save(path_input: String) -> Vec<u8> {
+    // Step 1: Load the encoded image
+    let encoded_image = file_as_image_buffer(path_input);
+
+    // Debug: Log image dimensions
+    println!("Encoded image dimensions: {}x{}", encoded_image.width(), encoded_image.height());
+
+    let dec = Decoder::new(encoded_image);
+
+    // Step 2: Decode the hidden bytes from the alpha channel
+    let out_buffer = dec.decode_alpha();
+
+    // Debug: Log the size of the decoded buffer
+    println!("Decoded buffer size (bytes): {}", out_buffer.len());
+
+    // Return the decoded buffer (as a byte vector)
+    return out_buffer;
+}
+

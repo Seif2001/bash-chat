@@ -39,21 +39,20 @@ async fn main() -> io::Result<()> {
         config.address_client_image_request_rx.clone()
     ).await;
     
-<<<<<<< HEAD
     // // Wrap the socket and config in Arc<Mutex<>> to share across tasks
     let config_arc = Arc::new(config);
-    //let socket_arc = Arc::new((socket));
+    let socket_arc = Arc::new(socket);
     // // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
-    dos::register_dos(&socket, &config_arc).await?;
+    dos::register_dos(&socket_arc, &config_arc).await?;
     // dos::request_dos(&socket_arc, &config).await?;
 
-    // let socket_arc_clone = Arc::clone(&socket_arc);
-    // let config_clone = Arc::clone(&config);
-    // let _ = tokio::spawn({
-    //     async move {
-    //         let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
-    //     }
-    // });
+    let socket_arc_clone = Arc::clone(&socket_arc);
+    let config_clone = Arc::clone(&config_arc);
+    let _ = tokio::spawn({
+        async move {
+            let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
+        }
+    });
     // dos::request_dos(&socket_arc, &config).await?;
     // // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
     // // println!("Leader is {} ", leader_ip);
@@ -62,29 +61,6 @@ async fn main() -> io::Result<()> {
     // // println!("After send images");
     // loop{}
     //         // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
-=======
-    // Wrap the socket and config in Arc<Mutex<>> to share across tasks
-    let config = Arc::new(config);
-    let socket_arc = Arc::new((socket));
-    // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
-    //dos::register_dos(&socket_arc, &config).await?;
-    //dos::request_dos(&socket_arc, &config).await?;
-
-    let socket_arc_clone = Arc::clone(&socket_arc);
-    let config_clone = Arc::clone(&config);
-    let _ = tokio::spawn({
-        async move {
-            let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
-        }
-    });
-    //dos::request_dos(&socket_arc, &config).await?;
-    // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
-    // println!("Leader is {} ", leader_ip);
-    // println!("Before send images");
-    // image_com::send_images_to_server(&config.client_raw_images_dir, 1, 1, leader_ip, config.port_client_rx, &socket_arc, &config).await?;
-    // println!("After send images");
-            // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
->>>>>>> 31fef1939c19c84e0091f1e41cd40024f94bdbd7
 
     //     // let mut clients = dos::parse_clients("clients_request.json",&config.username);
     //     // dos::print_clients(clients);
@@ -92,7 +68,6 @@ async fn main() -> io::Result<()> {
     //     // let client_ip = Ipv4Addr::new(10, 7, 16, 43);
     //     // api::request_list_images(&socket, &config, client_ip).await?;
     
-<<<<<<< HEAD
     //     // Client 2 Config
     //     // Respond to "image Request"
     //     // middleware::p2p_recv_image_request(&socket, &config).await?;
@@ -105,27 +80,11 @@ async fn main() -> io::Result<()> {
     //     let high_path = Path::new(&config.client_high_quality_receive_dir).join(&image_name);
     //     image_processor::display_image(&high_path.display().to_string());
     let config = Config::new();
-    frontend::run(socket, config).await;
+    let socket = socket_arc.clone();
+    frontend::run(&*socket, config).await;
     // // Respond to "Image Name"
     //let _ =api::receive_image_request(&socket, &config).await;
         
-=======
-        // Client 2 Config
-        // Respond to "image Request"
-        // middleware::p2p_recv_image_request(&socket, &config).await?;
-         let sending_socket = socket_arc.new_client_socket().await;
-         let image_name = "image3.png";
-        // let client_ip: Ipv4Addr = Ipv4Addr::new(10, 7, 19, 101);
-        let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"yehia")?;
-        let client_port = config.port_client_image_request_rx;
-        let _ = api::request_image(&socket_arc, &config, sending_socket, image_name.to_string(), client_ip, client_port, true).await;
-        //let high_path = Path::new(&config.client_high_quality_receive_dir).join(&image_name);
-        //image_processor::display_image(&high_path.display().to_string());
-        // // Respond to "Image Name"
-        //let _ =api::receive_image_request(&socket, &config).await;
-        loop{}
-
->>>>>>> 31fef1939c19c84e0091f1e41cd40024f94bdbd7
         Ok(())
     }
     

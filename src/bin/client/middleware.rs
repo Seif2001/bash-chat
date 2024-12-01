@@ -17,6 +17,7 @@ use std::io::Read;
 use serde_json::Value; // For deserializing the received JSON (if needed)
 use serde::{Serialize, Deserialize};
 use crate::history_table;
+use crate::frontend;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde_json;
@@ -331,7 +332,6 @@ pub async fn p2p_send_image_request(
 
 pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Result<()> {
     let client_rx = &socket.socket_client_request_images_rx;
-
     loop {
         let (message, src) = com::recv(client_rx).await?;
         let message = message.trim();
@@ -346,37 +346,42 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
             let sending_socket = socket.new_client_socket().await;
             if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
                 com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
-                println!("Sent acknowledgment to {}", src);
+                let approve_flag = frontend::approve_request(&image_name, ipv4_src).await?;
+                if approve_flag {
 
-                let path = config.client_encoded_images_dir.clone();
-                //send_cloud(&socket, &config,&"START".to_string()).await?;
-                //let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
-                //save to history table
-                //_ = dos::request_dos(&socket, &config).await;
-                //let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
-                //let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
-                //image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
-                // println!("After send images");
-                println!("after hist table");
-                let temp_image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
-                // Define the path to the JSON file
-                let json_path = "my_images.json"; // Replace with the actual path to the JSON file
-                
-                // Retrieve the number of views for the image from the JSON file
-                let views = match get_views_for_image(&image_name, json_path).await {
-                    Ok(views) => views,
-                    Err(_) => {
-                        println!("Image not found in JSON, defaulting to 0 views.");
-                        0 // Default to 0 views if image is not found
+                    
+                    println!("Sent acknowledgment to {}", src);
+
+                    let path = config.client_encoded_images_dir.clone();
+                    //send_cloud(&socket, &config,&"START".to_string()).await?;
+                    //let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                    //save to history table
+                    //_ = dos::request_dos(&socket, &config).await;
+                    //let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
+                    //let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
+                    //image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+                    // println!("After send images");
+                    println!("after hist table");
+                    let temp_image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
+                    // Define the path to the JSON file
+                    let json_path = "my_images.json"; // Replace with the actual path to the JSON file
+                    
+                    // Retrieve the number of views for the image from the JSON file
+                    let views = match get_views_for_image(&image_name, json_path).await {
+                        Ok(views) => views,
+                        Err(_) => {
+                            println!("Image not found in JSON, defaulting to 0 views.");
+                            0 // Default to 0 views if image is not found
+                        }
+                    };
+                    image_processor::append_views(temp_image_path.display().to_string(), temp_image_path.display().to_string(),views);
+                    println!("before send images");
+                    if let Ok(_) = image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await {
+                        println!("Image sent successfully!");
+                        //let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
+                    } else {
+                        println!("Failed to send image.");
                     }
-                };
-                image_processor::append_views(temp_image_path.display().to_string(), temp_image_path.display().to_string(),views);
-                println!("before send images");
-                if let Ok(_) = image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await {
-                    println!("Image sent successfully!");
-                    //let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
-                } else {
-                    println!("Failed to send image.");
                 }
                 //image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
 

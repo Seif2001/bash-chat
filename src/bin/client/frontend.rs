@@ -1,10 +1,12 @@
-use async_std::fs::File;
+use async_std::fs::{self, File};
+use async_std::path::Path;
+use bincode::config;
 use chrono::format;
 use async_std::io::ReadExt;
 use serde::Deserialize;
 
 use std::io::{self, Write};
-use base64::read;
+use base64::{display, read};
 use mini_redis::client;
 use time::convert::Nanosecond;
 use tokio::task;
@@ -18,10 +20,11 @@ use crate::socket::Socket;
         hierchy: u32,
         name: String,
         client: Option<Client>, // Add a client field to store the current client
+        
     }
     
     
-    pub async fn run(socket: Socket, config: Config) {
+    pub async fn run(socket: &Socket, config: Config) {
         let mut curr_dir = Directory {
             hierchy: 0,
             name: "root".to_string(),
@@ -40,21 +43,62 @@ use crate::socket::Socket;
             
             match readline {
             Ok(line) => match line.as_str() {
+                //1 && curr_dir.name.starts_with("clients")
                 "ls" => {
                     if curr_dir.hierchy == 0 {
-                        if let Err(e) = request_print_clients(socket, config).await {
-                            println!("Error: {}", e);
-                        }
+                        println!("clients");
+                        println!("resources");
                     }
-                    else if curr_dir.hierchy == 1{
+                    else
+                    if curr_dir.hierchy == 1 {
+                        if curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "clients"{
+                            if let Err(e) = request_print_clients(socket, config).await {
+                                println!("Error: {}", e);
+                            }
+                        }
+                        else if curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "resources"{
+                            println!("my_images");
+                            println!("requested_images");
+                        }
+                        
+                    }
+                    else if curr_dir.hierchy == 2 && curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "clients"{
                         if let Some(client) = &curr_dir.client {
                             ls_command(socket, config, client).await;
+                        }
+                    }
+                    else if curr_dir.hierchy == 2 && curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "resources"{
+                        if curr_dir.name.split("/").collect::<Vec<&str>>()[2] == "my_images"{
+                            display_images_data(config.client_raw_images_dir).await;
+                        }
+                        else if curr_dir.name.split("/").collect::<Vec<&str>>()[2] == "requested_images"{
+                            display_images_data(config.client_high_quality_receive_dir).await;
                         }
                     }
                     else {
                         println!("No command");
                     }
+                    // else if curr_dir.hierchy == 0{
+                    //     println!("resources")
+                    // }
                 },
+                line if line.starts_with("view") => {
+                    if curr_dir.hierchy == 2 && curr_dir.name.split("/").collect::<Vec<&str>>()[2] == "my_images"{
+                        let image_name = line.split(" ").collect::<Vec<&str>>()[1];
+                        let path = config.client_raw_images_dir + "/" + image_name;
+                        view_image(path).await;
+                    }
+                    else if curr_dir.hierchy == 2 && curr_dir.name.split("/").collect::<Vec<&str>>()[2] == "requested_images"{
+                        
+                        let image_name = line.split(" ").collect::<Vec<&str>>()[1];
+                        let path = config.client_high_quality_receive_dir + "/" + image_name;
+                        view_hq_image(path).await;
+                        
+                    }
+
+                },
+
+
                 line if line.starts_with("cd") => {
                     let new_dir = line.split(" ").collect::<Vec<&str>>()[1];
                     if new_dir == ".." {
@@ -68,6 +112,16 @@ use crate::socket::Socket;
                         }
                     } else {
                         if curr_dir.hierchy == 0 {
+                            let next_dir = new_dir.to_string();
+                            if next_dir == "clients" || next_dir == "resources" {
+                                let new_dir = format!("{}/{}", curr_dir.name, new_dir);
+                                curr_dir.name = new_dir;
+                                curr_dir.hierchy += 1;
+                                
+                            }
+                        }
+                        else
+                        if curr_dir.hierchy == 1 && curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "clients" {
                             let client_name = new_dir.to_string();
                             let new_dir = format!("{}/{}", curr_dir.name, new_dir);
                             match load_client(client_name.clone()).await {
@@ -82,13 +136,22 @@ use crate::socket::Socket;
                                     println!("Error loading client: {}", e);
                                 }
                             }
-                            
+                        
+                        }
+                        else if curr_dir.hierchy == 1 && curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "resources" {
+                            let next_dir = new_dir.to_string();
+                            if next_dir == "my_images" || next_dir == "requested_images" {
+                                let new_dir = format!("{}/{}", curr_dir.name, new_dir);
+                                curr_dir.name = new_dir;
+                                curr_dir.hierchy += 1;
+                                
+                            }
                         }
                     }
                 },
                 line if line.starts_with("see") => {
                     let image_name = line.split(" ").collect::<Vec<&str>>()[1];
-                    if curr_dir.hierchy == 1 {
+                    if curr_dir.hierchy == 2 {
                         if let Some(client) = &curr_dir.client {
                             request_see_image(socket, config, client, image_name, false).await;
                             
@@ -96,11 +159,14 @@ use crate::socket::Socket;
                     }
                 },
                 line if line.starts_with("request") => {
-                    let image_name = line.split(" ").collect::<Vec<&str>>()[1];
-                    if curr_dir.hierchy == 1 {
-                        if let Some(client) = &curr_dir.client {
-                            request_see_image(socket, config, client, image_name, true).await;
-                            
+                    if line.len() > 0{
+
+                        let image_name = line.split(" ").collect::<Vec<&str>>()[1];
+                        if curr_dir.hierchy == 2 {
+                            if let Some(client) = &curr_dir.client {
+                                request_see_image(socket, config, client, image_name, true).await;
+                                
+                            }
                         }
                     }
                 },
@@ -122,7 +188,7 @@ struct Client {
     username: String,
 }
 
-async fn read_and_print_usernames() -> std::io::Result<()> {
+async fn read_and_print_usernames(config: Config) -> std::io::Result<()> {
     // Open the file clients.json
     let mut file = File::open("clients_request.json").await?;
 
@@ -137,15 +203,17 @@ async fn read_and_print_usernames() -> std::io::Result<()> {
 
     // Print the username of each client
     for client in clients {
-        println!("{}", client.username);
+        if client.username != config.username {
+            println!("{}", client.username);
+        }
     }
 
     Ok(())
 }
 
-async fn request_print_clients(socket: Arc<Socket>, config: Config) -> std::io::Result<()> {
+async fn request_print_clients(socket: Arc<&Socket>, config: Config) -> std::io::Result<()> {
     dos::request_dos(&socket, &config).await?;
-    read_and_print_usernames().await?;
+    read_and_print_usernames(config).await?;
     Ok(())
 }
 
@@ -179,7 +247,7 @@ async fn load_client(client_name: String) -> Result<Client, String> {
 }
 
 
-async fn ls_command(socket: Arc<Socket>, config: Config, client: &Client) {
+async fn ls_command(socket: Arc<&Socket>, config: Config, client: &Client) {
     // Parse the client IP string into four u8 values
     let ip_parts: Vec<u8> = client.ip
         .split('.')
@@ -198,7 +266,7 @@ async fn ls_command(socket: Arc<Socket>, config: Config, client: &Client) {
 }
 
 
-async fn request_see_image(socket: Arc<Socket>, config: Config, client: &Client, image_name: &str, is_high: bool) {
+async fn request_see_image(socket: Arc<&Socket>, config: Config, client: &Client, image_name: &str, is_high: bool) {
     // Parse the client IP string into four u8 values
     let ip_parts: Vec<u8> = client.ip
         .split('.')
@@ -220,11 +288,108 @@ async fn request_see_image(socket: Arc<Socket>, config: Config, client: &Client,
     }
 }
 
-async fn view_image(path: &str){
-    // get views left
-    // check number of views left if greater than 0
-    // decode
-    // decrement views
-    // display
-    image_processor::display_image(path);
+async fn view_image(path: String){
+    //check if the path is valid
+    let file_path = Path::new(&path);
+
+    if file_path.exists().await {
+        if file_path.is_file().await {
+            // If the file exists, proceed to display the image
+            image_processor::display_image(&path.clone());
+        } else {
+            println!("Error: Path is not a file.");
+        }
+    } else {
+        println!("Error: Image file not found at {}", path);
+    }
+}
+
+async fn view_hq_image(path: String){
+    //check if the path is valid
+    let file_path = Path::new(&path);
+
+    if file_path.exists().await {
+        if file_path.is_file().await {
+            // If the file exists, proceed to display the image
+            let views = image_processor::get_views(path.clone());
+            println!("Views: {:?}", views);
+            if let Ok(views) = views {
+                if views > 0{
+                    let image = image_processor::decode_image_no_save(path.clone());
+                    image_processor::display_image_no_save(image);
+                    image_processor::append_views(path.clone(), path.clone(), views-1);
+                }
+                else{
+                    fs::remove_file(path.clone()).await.unwrap();
+                    println!("Error: Image has no views left.");
+                }
+            }
+        } else {
+            println!("Error: Path is not a file.");
+        }
+    } else {
+        println!("Error: Image file not found at {}", path);
+    }
+}
+
+
+async fn display_images_data(path: String) {
+    // Check if the path is valid
+    let path = Path::new(&path);
+
+    // Attempt to read the directory
+    match fs::read_dir(path).await {
+        Ok(entries) => {
+            // Iterate through the entries in the directory
+            use async_std::stream::StreamExt;
+            let mut entries = entries;
+            while let Some(entry) = entries.next().await {
+                match entry {
+                    Ok(entry) => {
+                        let file_name = entry.file_name();
+                        let file_path = entry.path();
+
+                        // Check if the file has an image extension (e.g., .jpg, .png)
+                        if let Some(extension) = file_path.extension() {
+                            let ext = extension.to_string_lossy().to_lowercase();
+                            if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext.as_str()) {
+                                println!("{:}", file_name.to_string_lossy());
+                            }
+                        }
+                    }
+                    Err(e) => println!("Error reading entry: {}", e),
+                }
+            }
+        }
+        Err(e) => {
+            println!("Failed to read directory {}: {}", path.display(), e);
+        }
+    }
+}
+
+pub async fn get_username_by_ip(ip: &str) -> Result<String, std::io::Error> {
+    let json_path = "clients_request.json";
+    let json_data = fs::read_to_string(json_path).await?;
+
+    let clients: Vec<Client> = serde_json::from_str(&json_data)?;
+
+    for client in clients {
+        if client.ip == ip {
+            return Ok(client.username);
+        }
+    }
+
+    Err(std::io::Error::new(std::io::ErrorKind::NotFound, "IP address not found"))
+}
+
+pub async fn approve_request(image_name: &str, client_ip: Ipv4Addr) -> io::Result<bool> {
+    let user_requester = get_username_by_ip(&client_ip.to_string()).await?;
+    println!("User: {} wants to view image: {} [Y/n]", user_requester, image_name);
+    let mut input = String::new();
+    async_std::io::stdin().read_line(&mut input).await.expect("Failed to read line");
+
+    // Trim and check user input
+    Ok(input.trim().to_lowercase() == "y")
+    // Add your logic here to determine if the request is approved
+    // For example, you can return Ok(true) if approved, or Ok(false) if not approved
 }
