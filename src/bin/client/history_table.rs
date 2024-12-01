@@ -177,7 +177,7 @@ fn save_history_table(history: &[HistoryEntry]) -> io::Result<()> {
 fn save_request_table(history: &[RequestEntry]) -> io::Result<()> {
     let serialized = serde_json::to_string_pretty(history)?;
     println!("After serialized");
-    let mut file = fs::File::create(HISTORY_FILE_PATH)?;
+    let mut file = fs::File::create("current_requests.json")?;
     println!("After file");
     file.write_all(serialized.as_bytes())?;
     println!("After writing into file");

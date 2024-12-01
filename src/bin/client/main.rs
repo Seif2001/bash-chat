@@ -24,7 +24,13 @@ pub mod frontend;
 
 
 use crate::config::Config;
-use crate::socket::Socket;
+use crate::socket::{Socket};
+
+pub async fn new_client_socket() -> Arc<Mutex<UdpSocket>>{
+    // bind random available port
+    let socket = Arc::new(Mutex::new(UdpSocket::bind("0.0.0.0:0").expect("Error binding")));
+    socket
+}
 
 #[tokio::main]
 #[show_image::main]
@@ -56,6 +62,8 @@ async fn main() -> io::Result<()> {
             let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
         }
     });
+
+    
     // dos::request_dos(&socket_arc, &config).await?;
     // // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
     // // println!("Leader is {} ", leader_ip);
