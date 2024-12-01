@@ -1,9 +1,15 @@
 [
   {
     "my_username": "omar",
+    "requester_username": "imposter",
+    "image_name": "image3.png",
+    "is_sent": true
+  },
+  {
+    "my_username": "omar",
     "requester_username": "yehiaz",
     "image_name": "image3.png",
-    "is_sent": false
+    "is_sent": true
   },
   {
     "my_username": "omar",
@@ -13,7 +19,7 @@
   },
   {
     "my_username": "omar",
-    "requester_username": "yehiaz",
+    "requester_username": "imposter",
     "image_name": "image3.png",
     "is_sent": false
   }

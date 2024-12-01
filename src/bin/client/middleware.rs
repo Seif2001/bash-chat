@@ -379,7 +379,7 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 println!("before send images");
                 if let Ok(_) = image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await {
                     println!("Image sent successfully!");
-                    //let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
+                    let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
                 } else {
                     println!("Failed to send image.");
                 }
