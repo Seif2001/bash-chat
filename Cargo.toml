@@ -25,14 +25,9 @@ walkdir = "2.3"
 
 image = "0.21"
 png = "0.17"
-<<<<<<< HEAD
 rustyline = "14.0.0"
 minifb = "0.27.0"
-=======
 clap = "4.0"
-rustyline = "10.0"
-
->>>>>>> 24e35b2c24006c5441bb9b10cf74bdd330f3baa1
 
 
 [[bin]]
