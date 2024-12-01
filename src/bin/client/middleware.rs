@@ -461,8 +461,7 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
 pub async fn send_image(socket: &Socket, image_name: &str, ipv4_src: Ipv4Addr, port: u16, chunk_size: usize, config: &Config) -> std::io::Result<()> {
     let path = Path::new(&config.client_encoded_images_dir).join(image_name.clone());
 
-    let approve_flag = frontend::approve_request(&image_name, ipv4_src).await?;
-    if approve_flag {
+   
 
         
         println!("Sent acknowledgment to {}", ipv4_src);
@@ -496,7 +495,7 @@ pub async fn send_image(socket: &Socket, image_name: &str, ipv4_src: Ipv4Addr, p
         } else {
             println!("Failed to send image.");
         }
-    }
+   
     Ok(())
 }
 
