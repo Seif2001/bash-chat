@@ -125,6 +125,11 @@ use crate::history_table;
                                 curr_dir.hierchy += 1;
                                 
                             }
+                            else if next_dir == "current_requests"{
+                                let new_dir = format!("{}/{}", curr_dir.name, new_dir);
+                                curr_dir.name = new_dir;
+                                curr_dir.hierchy += 1;
+                            }
                         }
                         else
                         if curr_dir.hierchy == 1 && curr_dir.name.split("/").collect::<Vec<&str>>()[1] == "clients" {
