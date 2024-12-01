@@ -7,6 +7,11 @@ use std::sync::Arc;
 use crate::config::Config;
 use crate::socket::{self, Socket};
 use crate::{image_com, middleware};
+use serde::{Serialize, Deserialize};
+use std::fs::{self, File};
+
+use crate::dos;
+use crate::image_processor;
 
 pub async fn image_com_server(socket: Arc<Socket>, config: Arc<Config>) -> io::Result<()> {
     let start = "START".to_string();
@@ -80,6 +85,21 @@ pub async fn request_image(
     is_high: bool
 ) -> io::Result<()> {
     // Determine the request message based on the quality flag
+    let client_username = dos::get_username_by_ip(&client_ip.to_string()).unwrap();
+    let _ = image_processor::write_into_json(client_username, image_name.to_string(), is_high);
+    // Serialize the struct to a JSON string
+    // let json_data = serde_json::to_string(&image_request).expect("Failed to serialize data");
+
+    // // Specify the file path to write the JSON data
+    // let file_path = "image_requests_unfinished.json";
+
+    // // Create or overwrite the file with the JSON data
+    // let mut file = File::create(file_path)?;
+
+    // // Write the JSON string to the file
+    // file.write_all(json_data.as_bytes())?;
+    // println!("Data written to JSON: {}", json_data);
+
     let request_message = if is_high {
         format!("GET H {}", image_name)
     } else {
@@ -98,6 +118,7 @@ pub async fn request_image(
         Ok(_) => {
             // If the request is successful, proceed to receiving and saving the image
             image_com::receive_image(socket, config, sending_socket, received_path).await?;
+            let _ = image_processor::clear_file("images_requests_unfinished");
             Ok(())
         }
         Err(e) => {
@@ -107,6 +128,8 @@ pub async fn request_image(
         }
     }
 }
+
+
 
 
 
@@ -123,3 +146,16 @@ pub async fn receive_image_request(
         }
     }
 }
+
+pub async fn request_update_views(socket: &Socket,config: &Config,sending_socket: Arc<Mutex<UdpSocket>>,image_name: String,client_ip: Ipv4Addr,client_port: u16,views: u32) -> io::Result<()> {
+    let request_message = format!("UPDATE VIEWS {} {}", image_name, views);
+
+    match middleware::p2p_single_send_update_views_request(socket, sending_socket.clone(), config, client_ip, client_port, &request_message).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Failed to send update request: {}", e);
+            Err(e)
+        }
+    }
+}
+

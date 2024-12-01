@@ -275,11 +275,15 @@ pub async fn p2p_send_image_request(
         let sending_socket = sending_socket.clone();
         let ack_tx = ack_tx.clone();
         async move {
+            let mut attempts_here =0;
             loop {
                 // Apply timeout to the receive operation
                 let receive_result = timeout(receive_timeout, com::recv(&sending_socket)).await;
-                if attempts >= max_retries {
+                if attempts_here >= max_retries {
                     break;
+                }
+                else{
+                    attempts_here+=1;
                 }
                 match receive_result {
                     Ok(Ok((response, _src))) => {
@@ -438,6 +442,45 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 eprintln!("Received non-IPv4 address: {}", src);
             }
         }
+        else if message.starts_with("UPDATE VIEWS ") {
+            let data = message.trim_start_matches("UPDATE VIEWS ").trim().to_string();
+        
+            println!("Received image view update request from {}", src);
+        
+            if data.is_empty() {
+                println!("No data provided");
+                continue;
+            }
+        
+            let parts: Vec<&str> = data.split_whitespace().collect();
+        
+            if parts.len() < 2 {
+                println!("Invalid data format. Expected: image_name number_of_views");
+                continue;
+            }
+        
+            let image_name = parts[0].to_string();
+            let number_of_views: u32 = match parts[1].parse() {
+                Ok(num) => num,
+                Err(_) => {
+                    println!("Invalid number of views: {}", parts[1]);
+                    continue;
+                }
+            };
+        
+            let response = "ack_request";
+            let sending_socket = socket.new_client_socket().await;
+        
+            if let std::net::IpAddr::V4(ipv4_src) = src.ip() {
+                let image_path = config.client_high_quality_receive_dir.to_owned() + "/" + &image_name;
+                let _ =image_processor::update_views(image_path, number_of_views);
+        
+                com::send(&sending_socket, response.to_string(), (ipv4_src, src.port())).await?;
+            } else {
+                eprintln!("Received non-IPv4 address: {}", src);
+            }
+        }
+        
             
         
         else {
@@ -709,6 +752,78 @@ pub async fn p2p_send_images_list(socket_send: &Arc<Mutex<UdpSocket>>, dest: (Ip
     }
 }
 
+pub async fn p2p_single_send_update_views_request(
+    socket: &Socket,
+    sending_socket: Arc<Mutex<UdpSocket>>,
+    config: &Config,
+    client_address: Ipv4Addr,
+    client_port: u16,
+    message: &String,
+) -> std::io::Result<()> {
+    let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
+    let max_retries = 5; // Number of retries
+    let mut attempts = 0;
+    let receive_timeout = Duration::from_secs(1); // Timeout duration for receiving
+
+    tokio::spawn({
+        let sending_socket = sending_socket.clone();
+        let ack_tx = ack_tx.clone();
+        async move {
+            let mut attempts_here =0;
+            loop {
+                let receive_result = timeout(receive_timeout, com::recv(&sending_socket)).await;
+                if attempts_here >= max_retries {
+                    break;
+                }
+                else{
+                    attempts_here+=1;
+                }
+                match receive_result {
+                    Ok(Ok((response, _src))) => {
+                        let response = response.trim();
+                        if response == "ack_request" {
+                            let _ = ack_tx.send(true); // Signal acknowledgment received
+                            break;
+                        } else {
+                            println!("Received unexpected response: '{}'", response);
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        println!("Error receiving message: {}", e);
+                    }
+                    Err(_) => {
+                        println!("Timeout waiting for acknowledgment");
+                    }
+                }
+            }
+        }
+    });
+
+    while attempts < max_retries {
+        attempts += 1;
+        println!("Sending view update request to {}:{}", client_address, client_port);
+        let dest = (client_address, client_port);
+        {
+            com::send(&sending_socket, message.to_string(), dest).await?;
+        }
+
+        tokio::select! {
+            _ = ack_rx.recv() => {
+                println!("Acknowledgment received.");
+                break;
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                println!("Timeout waiting for acknowledgment, resending request... Attempt {}/{}", attempts, max_retries);
+            }
+        }
+    }
+
+    if attempts >= max_retries {
+        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Max retries reached"));
+    }
+
+    Ok(())
+}
 
 
 

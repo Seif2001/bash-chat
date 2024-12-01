@@ -11,6 +11,8 @@ use show_image::{create_window, ImageInfo, ImageView};
 use image::{DynamicImage, FilterType};
 use std::fs::{self, File};
 use std::io::Error;
+use serde::{Serialize, Deserialize};
+
 
 // use image::{DynamicImage, RgbaImage, Rgba, ImageBuffer, GenericImageView};
 // only the GenericImageView is needed
@@ -19,6 +21,14 @@ use std::fs::metadata;
 use std::io::Read;
 // use std::cmp::min;
 use std::io::Write;
+
+// Struct representing the image request data
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ImageRequest {
+    pub client_username: String,
+    pub image_name: String,
+    pub is_high: bool,
+}
 
 pub fn encode_image(path_input: String, path_output: String ,path_default:String) {
     let payload_bytes = get_file_as_byte_vec(&path_input);
@@ -252,3 +262,78 @@ pub fn decode_image_no_save(path_input: String) -> Vec<u8> {
     return out_buffer;
 }
 
+pub fn update_views(encoded_image_path: String, updated_views: u32) -> std::io::Result<()> {
+    let encoded_image_path_1 = encoded_image_path.clone();
+
+    let encoded_image_path_2 = encoded_image_path.clone();
+    let encoded_image_path_3 = encoded_image_path.clone();
+    let encoded_image_path_4 = encoded_image_path.clone();
+
+
+
+    let views = get_views(encoded_image_path)?;
+    if updated_views > views {
+        append_views(encoded_image_path_1,encoded_image_path_2, updated_views);
+    } else {
+        append_views(encoded_image_path_3,encoded_image_path_4, views);
+    }
+
+    Ok(())
+} pub fn write_into_json(client_username: String, image_name: String, is_high: bool) -> std::io::Result<()>{
+    let image_request = ImageRequest {
+        client_username,
+        image_name: image_name.clone(),
+        is_high,
+    };
+    // Serialize the struct to a JSON string
+    let json_data = serde_json::to_string(&image_request).expect("Failed to serialize data");
+
+    // Specify the file path to write the JSON data
+    let file_path = "image_requests_unfinished.json";
+
+    // Create or overwrite the file with the JSON data
+    let mut file = File::create(file_path)?;
+
+    // Write the JSON string to the file
+    file.write_all(json_data.as_bytes())?;
+    println!("Data written to JSON: {}", json_data);
+    Ok(())
+}
+
+// Function to read and deserialize the JSON file
+pub fn read_image_requests(file_path: &str) -> std::io::Result<Vec<ImageRequest>> {
+    let mut file = File::open(file_path)?;
+    
+    // Check if the file is empty
+    let metadata = file.metadata()?;
+    if metadata.len() == 0 {
+        return Ok(Vec::new()); // Return an empty vector if the file is empty
+    }
+
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    
+    // Try to deserialize the contents
+    match serde_json::from_str::<Vec<ImageRequest>>(&contents) {
+        // If it's a valid array of requests, return it
+        Ok(requests) => Ok(requests),
+        // If the JSON is not an array, check if it's an object (map)
+        Err(_) => {
+            // Try to deserialize as a single map entry or handle specific error
+            match serde_json::from_str::<ImageRequest>(&contents) {
+                Ok(request) => Ok(vec![request]), // Return a single item as a vec
+                Err(e) => {
+                    eprintln!("Error deserializing JSON: {}", e);
+                    Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to parse JSON"))
+                }
+            }
+        }
+    }
+}
+
+// Function to clear the file (optional, if you want to clear the file after processing)
+pub fn clear_file(file_path: &str) -> std::io::Result<()> {
+    let mut file = File::create(file_path)?;  // This will truncate the file to 0 size
+    file.write_all(b"")?;  // Optionally write an empty byte slice to clear the file
+    Ok(())
+}
