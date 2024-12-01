@@ -371,6 +371,7 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                 let approve_flag = frontend::approve_request(&image_name, ipv4_src).await?;
                 if approve_flag {
 
+<<<<<<< HEAD
                     
                     println!("Sent acknowledgment to {}", src);
 
@@ -404,6 +405,38 @@ pub async fn p2p_recv_request(socket: &Socket, config: &Config) -> std::io::Resu
                     } else {
                         println!("Failed to send image.");
                     }
+=======
+                let path = config.client_encoded_images_dir.clone();
+                send_cloud(&socket, &config,&"START".to_string()).await?;
+                let leader_ip:Ipv4Addr= recv_leader(&socket, &config).await;
+                //save to history table
+                //_ = dos::request_dos(&socket, &config).await;
+                println!("Before username");
+                let requester_username = dos::get_username_by_ip(&ipv4_src.to_string())?;
+                let _ = history_table::add_to_history(&config.username,&requester_username,&image_name);
+                image_com::send_images_from_to(&config.client_raw_images_dir, &image_name, 1, leader_ip, config.port_client_rx, &socket, &config).await?;
+                // println!("After send images");
+                //println!("after hist table");
+                let temp_image_path = Path::new(&config.client_encoded_images_dir).join(&image_name);
+                // Define the path to the JSON file
+                let json_path = "my_images.json"; // Replace with the actual path to the JSON file
+                
+                // Retrieve the number of views for the image from the JSON file
+                let views = match get_views_for_image(&image_name, json_path).await {
+                    Ok(views) => views,
+                    Err(_) => {
+                        println!("Image not found in JSON, defaulting to 0 views.");
+                        0 // Default to 0 views if image is not found
+                    }
+                };
+                image_processor::append_views(temp_image_path.display().to_string(), temp_image_path.display().to_string(),views);
+                println!("before send images");
+                if let Ok(_) = image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await {
+                    println!("Image sent successfully!");
+                    let _ = history_table::mark_as_sent(&config.username,&requester_username,&image_name);
+                } else {
+                    println!("Failed to send image.");
+>>>>>>> d4b0603ee92659e872e8f3971b5e5b8ab79c34cb
                 }
                 //image_com::send_image(socket, &image_name, &path, ipv4_src, src.port(), 1020, config).await?;
 
@@ -778,67 +811,67 @@ pub async fn p2p_single_send_update_views_request(
     client_port: u16,
     message: &String,
 ) -> std::io::Result<()> {
-    let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
-    let max_retries = 5; // Number of retries
-    let mut attempts = 0;
-    let receive_timeout = Duration::from_secs(1); // Timeout duration for receiving
-
-    tokio::spawn({
-        let sending_socket = sending_socket.clone();
-        let ack_tx = ack_tx.clone();
-        async move {
-            let mut attempts_here =0;
-            loop {
-                let receive_result = timeout(receive_timeout, com::recv(&sending_socket)).await;
-                if attempts_here >= max_retries {
-                    break;
-                }
-                else{
-                    attempts_here+=1;
-                }
-                match receive_result {
-                    Ok(Ok((response, _src))) => {
-                        let response = response.trim();
-                        if response == "ack_request" {
-                            let _ = ack_tx.send(true); // Signal acknowledgment received
-                            break;
-                        } else {
-                            println!("Received unexpected response: '{}'", response);
-                        }
-                    }
-                    Ok(Err(e)) => {
-                        println!("Error receiving message: {}", e);
-                    }
-                    Err(_) => {
-                        println!("Timeout waiting for acknowledgment");
-                    }
-                }
-            }
-        }
-    });
-
-    while attempts < max_retries {
-        attempts += 1;
-        println!("Sending view update request to {}:{}", client_address, client_port);
-        let dest = (client_address, client_port);
-        {
-            com::send(&sending_socket, message.to_string(), dest).await?;
-        }
-
-        tokio::select! {
-            _ = ack_rx.recv() => {
-                println!("Acknowledgment received.");
-                break;
-            }
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
-                println!("Timeout waiting for acknowledgment, resending request... Attempt {}/{}", attempts, max_retries);
-            }
-        }
+    // let (ack_tx, mut ack_rx) = tokio::sync::broadcast::channel(1);
+    // let max_retries = 5; // Number of retries
+    // let mut attempts = 0;
+    // let receive_timeout = Duration::from_secs(1); // Timeout duration for receiving
+    println!("Sending view update request to {}:{}", client_address, client_port);
+    let dest = (client_address, client_port);
+    {
+        com::send(&sending_socket, message.to_string(), dest).await?;
     }
+    // tokio::spawn({
+    //     let sending_socket = sending_socket.clone();
+    //     let ack_tx = ack_tx.clone();
+    //     async move {
+    //         let mut attempts_here =0;
+    //         loop {
+    //             let receive_result = timeout(receive_timeout, com::recv(&sending_socket)).await;
+    //             if attempts_here >= max_retries {
+    //                 break;
+    //             }
+    //             else{
+    //                 attempts_here+=1;
+    //             }
+    //             match receive_result {
+    //                 Ok(Ok((response, _src))) => {
+    //                     let response = response.trim();
+    //                     if response == "ack_request" {
+    //                         let _ = ack_tx.send(true); // Signal acknowledgment received
+    //                         break;
+    //                     } else {
+    //                         println!("Received unexpected response: '{}'", response);
+    //                     }
+    //                 }
+    //                 Ok(Err(e)) => {
+    //                     println!("Error receiving message: {}", e);
+    //                 }
+    //                 Err(_) => {
+    //                     println!("Timeout waiting for acknowledgment");
+    //                 }
+    //             }
+    //         }
+    //     }
+    // });
 
-    if attempts >= max_retries {
-        return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Max retries reached"));
-    }
+    // while attempts < max_retries {
+    //     attempts += 1;
+      
+
+        // tokio::select! {
+        //     _ = ack_rx.recv() => {
+        //         println!("Acknowledgment received.");
+        //         break;
+        //     }
+        //     _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+        //         println!("Timeout waiting for acknowledgment, resending request... Attempt {}/{}", attempts, max_retries);
+        //     }
+        // }
+    // }
+
+    // if attempts >= max_retries {
+    //     return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "Max retries reached"));
+    // }
 
     Ok(())
 }

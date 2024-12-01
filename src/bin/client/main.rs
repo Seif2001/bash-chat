@@ -55,6 +55,7 @@ async fn main() -> io::Result<()> {
             let _ = middleware::p2p_recv_request(&socket_arc_clone, &config_clone).await;
         }
     });
+<<<<<<< HEAD
     // dos::request_dos(&socket_arc, &config).await?;
     // // let leader_ip: Ipv4Addr = middleware::recv_leader(&socket_arc, &config).await;
     // // println!("Leader is {} ", leader_ip);
@@ -63,6 +64,15 @@ async fn main() -> io::Result<()> {
     // // println!("After send images");
     // loop{}
     //         // middleware::send_cloud(&socket, &config,&"START".to_string()).await?;
+=======
+    let sending_socket = socket_arc.new_client_socket().await;
+    let image_name = "image3.png";
+    // let client_ip: Ipv4Addr = dos::get_ip_by_username_as_ipv4(&"yehiaz")?;
+    let client_port = config.port_client_image_request_rx;
+     let _ = api::request_update_views(&socket_arc, &config, sending_socket, image_name.to_string(), client_port,100).await;
+        
+           loop{}
+>>>>>>> d4b0603ee92659e872e8f3971b5e5b8ab79c34cb
 
     //     // let mut clients = dos::parse_clients("clients_request.json",&config.username);
     //     // dos::print_clients(clients);

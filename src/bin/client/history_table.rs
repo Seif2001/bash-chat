@@ -29,10 +29,14 @@ const HISTORY_FILE_PATH: &str = "history_table_client.json";
 
 pub fn add_to_history(my_username: &str, requester_username: &str, image_name: &str) -> io::Result<()> {
     let mut history = read_history_table()?;
+    println!("Before new entry");
     let new_entry = HistoryEntry::new(my_username, requester_username, image_name);
+    println!("After new entry");
     history.push(new_entry);
-
-    save_history_table(&history)
+    println!("After pushing into history table");
+    let _ = save_history_table(&history);
+    println!("After saving into table");
+    Ok(())
 }
 
 pub fn get_history() -> io::Result<Vec<HistoryEntry>> {
@@ -51,7 +55,7 @@ pub fn delete_history_entry(my_username: &str, requester_username: &str, image_n
     save_history_table(&history)
 }
 
-fn read_history_table() -> io::Result<Vec<HistoryEntry>> {
+pub fn read_history_table() -> io::Result<Vec<HistoryEntry>> {
     if Path::new(HISTORY_FILE_PATH).exists() {
         let mut file = fs::File::open(HISTORY_FILE_PATH)?;
         let mut content = String::new();
@@ -66,8 +70,11 @@ fn read_history_table() -> io::Result<Vec<HistoryEntry>> {
 
 fn save_history_table(history: &[HistoryEntry]) -> io::Result<()> {
     let serialized = serde_json::to_string_pretty(history)?;
+    println!("After serialized");
     let mut file = fs::File::create(HISTORY_FILE_PATH)?;
+    println!("After file");
     file.write_all(serialized.as_bytes())?;
+    println!("After writing into file");
     Ok(())
 }
 
