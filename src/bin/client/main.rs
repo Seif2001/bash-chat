@@ -47,7 +47,7 @@ async fn main() -> io::Result<()> {
     let socket_arc = Arc::new(socket);
     // // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
     dos::register_dos(&socket_arc, &config_arc).await?;
-    // dos::request_dos(&socket_arc, &config).await?;
+    dos::request_dos(&socket_arc, &config_arc).await?;
 
     let socket_arc_clone = Arc::clone(&socket_arc);
     let config_clone = Arc::clone(&config_arc);
