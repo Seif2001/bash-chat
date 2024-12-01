@@ -235,38 +235,38 @@ pub async fn bully_listener( servers: Arc<Mutex<HashMap<u32, Node>>>, my_id: u32
     println!("Waiting for sim fail message");
     loop {
         tokio::select! {
-            _ = interval.tick() => {
-                        let servers_clone = Arc::clone(&servers);
-                        let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-                        let config_clone = Arc::clone(&config);    // Clone Arc here
-                        bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
-                    }
-                }
-            // result = async {
-            //     let binding = failover_socket.clone();
-            //     let socket = binding.lock().await;
-            //     socket.recv_from(&mut buf).await
-            // } => {
-            //     match result {
-            //         Ok((size, _)) => {
-            //             if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
-            //                 if id as u32 != my_id {
-            //                     println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
-            //                     let servers_clone = Arc::clone(&servers);
-            //                     let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
-            //                     let config_clone = Arc::clone(&config);    // Clone Arc here
-            //                     bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
-                                
-            //                 } else {
-            //                     println!("Received own message, skipping.");
-            //                 }
-            //             }
-            //         },
-            //         Err(e) => {
-            //             eprintln!("Error receiving message: {:?}", e);
+            // _ = interval.tick() => {
+            //             let servers_clone = Arc::clone(&servers);
+            //             let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+            //             let config_clone = Arc::clone(&config);    // Clone Arc here
+            //             bully_algorithm_init(servers_clone, my_id, &socket_clone, &config_clone).await;
             //         }
             //     }
-            // }
-        //}
+            result = async {
+                let binding = failover_socket.clone();
+                let socket = binding.lock().await;
+                socket.recv_from(&mut buf).await
+            } => {
+                match result {
+                    Ok((size, _)) => {
+                        if let Ok((id, random_number)) = bincode::deserialize::<(i32, u32)>(&buf[..size]) {
+                            if id as u32 != my_id {
+                                println!("Starting bully algorithm due to received message: {:?}", (id, random_number));
+                                let servers_clone = Arc::clone(&servers);
+                                let socket_clone = Arc::clone(&socket_a);  // Clone Arc here
+                                let config_clone = Arc::clone(&config);    // Clone Arc here
+                                bully_algorithm(servers_clone, my_id, &socket_clone, &config_clone,(id,random_number)).await;  
+                                
+                            } else {
+                                println!("Received own message, skipping.");
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Error receiving message: {:?}", e);
+                    }
+                }
+            }
+        }
     }
 }

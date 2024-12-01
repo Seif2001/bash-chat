@@ -53,7 +53,6 @@ async fn main() -> io::Result<()> {
     // // image_com::send_images_from_to(&config.client_raw_images_dir, 1, 1, Ipv4Addr::new(10, 7, 16, 43), config.port_client_rx, &socket_arc, &config).await?;
     dos::register_dos(&socket_arc, &config_arc).await?;
     dos::request_dos(&socket_arc, &config_arc).await?;
-    let socket_arc_clone = Arc::clone(&socket_arc);
     let config_clone = Arc::clone(&config_arc);
     let json_path = "image_requests_unfinished.json";
     let requests = match image_processor::read_image_requests(json_path) {

@@ -202,6 +202,7 @@ pub async fn set_leader_dos(leader_id: u32, servers: Arc<Mutex<HashMap<u32, Node
 
 
 pub async fn elect_leader_dos(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socket: &Socket, config: &Config)->std::io::Result<()>{
+    let numbers_of_servers:u32 = servers.lock().await.len().try_into().unwrap();
     let mut leader_id: u32 = my_id;
     let db = servers.lock().await;
 
@@ -213,7 +214,7 @@ pub async fn elect_leader_dos(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32
     drop(db); // Unlock the mutex before locking it again
 
     while let Some(node) = servers.lock().await.get_mut(&leader_id) {
-        leader_id = (leader_id+1) % 3;  // Increment the leader_id to check the next server
+        leader_id = (leader_id+1) % numbers_of_servers;  // Increment the leader_id to check the next server
         println!("Checking leader at id {}", leader_id);
         if !node.is_failed {
             println!("Found a leader at id {}: {:?}", leader_id, node);
