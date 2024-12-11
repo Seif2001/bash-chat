@@ -25,7 +25,7 @@ async fn main() -> std::io::Result<()> {
     let servers: Arc<Mutex<std::collections::HashMap<u32, Node>>> = Arc::new(Mutex::new(
         vec![
             (0, Node{is_leader: true, is_dos_leader:true, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
-            (1, Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
+            // (1, Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
             // (2,Node{is_leader: false, is_dos_leader:false, is_failed: false, current_leader: 0, current_dos_leader:0, term: 0}),
         ].into_iter().collect()
     ));
@@ -43,9 +43,9 @@ async fn main() -> std::io::Result<()> {
 
 
     leader::elections(server_clone.clone(), my_id, &socket_arc, &config_arc).await;
-    leader::elections_dos(servers, &socket_arc).await;
-    dos::dos_registrar(server_clone.clone(),my_id, &socket_arc, &config_arc).await;
-    dos::recv_dos(&socket_arc, &config_arc).await;
+    // leader::elections_dos(servers, &socket_arc).await;
+    // dos::dos_registrar(server_clone.clone(),my_id, &socket_arc, &config_arc).await;
+    // dos::recv_dos(&socket_arc, &config_arc).await;
    // Spawn the image receiving task
    tokio::spawn({
     let socket_arc = Arc::clone(&socket_arc);  // Clone the Arc to move into the task
@@ -70,14 +70,14 @@ async fn main() -> std::io::Result<()> {
 
 
     // Spawn the bully listener task in a separate thread
-    let listener_task = tokio::spawn({
-        let server_clone = server_clone.clone();
-        let socket_clone = socket_arc.clone(); // Clone the Arc
-        let config_clone = config_arc.clone(); // Clone the Arc
-        async move {
-            failure::bully_listener(server_clone, my_id, &socket_clone, &config_clone, Arc::new(Mutex::new(false))).await;
-        }
-    });
+    // let listener_task = tokio::spawn({
+    //     let server_clone = server_clone.clone();
+    //     let socket_clone = socket_arc.clone(); // Clone the Arc
+    //     let config_clone = config_arc.clone(); // Clone the Arc
+    //     async move {
+    //         failure::bully_listener(server_clone, my_id, &socket_clone, &config_clone, Arc::new(Mutex::new(false))).await;
+    //     }
+    // });
     
 
     loop{

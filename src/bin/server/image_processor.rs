@@ -13,7 +13,7 @@ use std::io::Read;
 use std::io::Write;
 
 pub fn encode_image(path_input: String, path_output: String ,path_default:String) -> Result<(), Box<dyn std::error::Error>> {
-    let payload_bytes = get_file_as_byte_vec(&"/home/g7/Desktop/yehia/Distributed/bash-chat/src/bin/server/raw_images/test.png".to_string());
+    let payload_bytes = get_file_as_byte_vec(&path_input);
     println!("Payload size (bytes): {}", payload_bytes.len());
     println!("path_default: {}", path_default);
     let destination_image = file_as_dynamic_image(path_default);

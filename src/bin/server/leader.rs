@@ -97,34 +97,37 @@ pub async fn set_leader(leader_id: u32, servers: Arc<Mutex<HashMap<u32, Node>>>,
 
 
 pub async fn elect_leader(servers: Arc<Mutex<HashMap<u32, Node>>>, my_id:u32, socket: &Socket, config: &Config, term: u32, client_addr: Ipv4Addr)->std::io::Result<()>{
-    let mut leader_id: u32 = my_id;
-    let numbers_of_servers:u32 = servers.lock().await.len().try_into().unwrap();
-    let db = servers.lock().await;
+    
+    // let mut leader_id: u32 = my_id;
+    // let numbers_of_servers:u32 = servers.lock().await.len().try_into().unwrap();
+    // let db = servers.lock().await;
+    // send_leader_to_client(socket, client_addr, config.port_client_tx_leader, my_id).await;
 
-    for (key, node) in db.iter(){
-        if node.is_leader {
-            leader_id = *key;
-        }
-    }
-    println!("current leader is {}", leader_id);
-    drop(db); // Unlock the mutex before locking it again
+    // for (key, node) in db.iter(){
+    //     if node.is_leader {
+    //         leader_id = *key;
+    //     }
+    // }
+    // println!("current leader is {}", leader_id);
+    // drop(db); // Unlock the mutex before locking it again
 
-    while let Some(node) = servers.lock().await.get_mut(&leader_id) {
-        leader_id = (leader_id+1) % numbers_of_servers;  // Increment the leader_id to check the next server
-        println!("Checking leader at id {}", leader_id);
-        if !node.is_failed {
-            println!("Found a leader at id {}: {:?}", leader_id, node);
-            break;
-        }
-    }
+    // while let Some(node) = servers.lock().await.get_mut(&leader_id) {
+    //     leader_id = (leader_id+1) % numbers_of_servers;  // Increment the leader_id to check the next server
+    //     println!("Checking leader at id {}", leader_id);
+    //     if !node.is_failed {
+    //         println!("Found a leader at id {}: {:?}", leader_id, node);
+    //         break;
+    //     }
+    // }
 
-    if leader_id == my_id{
-        println!("I am the leader");
-        send_leader(servers, socket, leader_id, config).await;
-        let socket = socket.clone();
-        send_leader_to_client(socket, client_addr, config.port_client_tx_leader, leader_id).await;
-
-    }
+    // if leader_id == my_id{
+    //     println!("I am the leader");
+    //     send_leader(servers, socket, my_id, config).await;
+    //     let socket = socket.clone();
+    //     send_leader_to_client(socket, client_addr, config.port_client_tx_leader, my_id).await;
+        
+    //}
+    send_leader_to_client(socket, client_addr, config.port_client_tx_leader, my_id).await;
     Ok(())
     
 }
